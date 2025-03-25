@@ -5,14 +5,20 @@ setwd("/projectnb/dietzelab/dongchen/anchorSites/NA_runs/")
 # average ERA5 to climatic covariates.
 outdir <- "/projectnb/dietzelab/dongchen/anchorSites/NA_runs/GridMET"
 in.path <- "/projectnb/dietzelab/dongchen/anchorSites/ERA5/"
-# dates <- c(as.Date("2012-01-01"), seq(as.Date("2012-07-15"), as.Date("2021-07-15"), "1 year"))
-# dates <- seq(as.Date("2012-01-01"), as.Date("2024-12-31"), "1 year")
-start.dates <- seq(as.Date("2012-01-01"), as.Date("2024-01-01"), "1 year")
-end.dates <- seq(as.Date("2012-12-31"), as.Date("2024-12-31"), "1 year")
+start.dates <- c("2012-01-01", "2012-07-16", "2013-07-16", 
+                 "2014-07-16", "2015-07-16", "2016-07-16", 
+                 "2017-07-16", "2018-07-16", "2019-07-16", 
+                 "2020-07-16", "2021-07-16", "2022-07-16", 
+                 "2023-07-16")
+end.dates <- c("2012-07-15", "2013-07-15", "2014-07-15", 
+               "2015-07-15", "2016-07-15", "2017-07-15", 
+               "2018-07-15", "2019-07-15", "2020-07-15", 
+               "2021-07-15", "2022-07-15", "2023-07-15", 
+               "2024-07-15")
 # parallel average ERA5 into covariates.
-future::plan(future::multisession, workers = 5)
+future::plan(future::multisession, workers = 5, gc = T)
 paths <- start.dates %>% furrr::future_map2(end.dates, function(d1, d2){
-  Average.ERA5.2.GeoTIFF(d1, d2, in.path, outdir)
+  Average_ERA5_2_GeoTIFF(d1, d2, in.path, outdir)
 }, .progress = T) %>% unlist
 # setup.
 base.map.dir <- "/projectnb/dietzelab/dongchen/anchorSites/downscale/MODIS_NLCD_LC.tif"
@@ -21,7 +27,7 @@ variables <- c("AbvGrndWood", "LAI", "SoilMoistFrac", "TotSoilCarb")
 settings <- "/projectnb/dietzelab/dongchen/anchorSites/NA_runs/SDA_25ens_2024_11_25/pecanIC.xml"
 outdir <- "/projectnb/dietzelab/dongchen/anchorSites/NA_runs/SDA_25ens_2024_11_25/downscale_maps/"
 cores <- 28
-date <- seq(as.Date("2012-07-15"), as.Date("2021-07-15"), "1 year")
+date <- seq(as.Date("2012-07-15"), as.Date("2024-07-15"), "1 year")
 # loop over years.
 for (i in seq_along(date)) {
   # setup covariates paths and variable names.
@@ -41,7 +47,7 @@ for (i in seq_along(date)) {
   if (file.exists(paste0(outdir, "covariates_", lubridate::year(date[i]), ".tiff"))) {
     covariates.dir <- paste0(outdir, "covariates_", lubridate::year(date[i]), ".tiff")
   } else {
-    covariates.dir <- stack.covariates.2.geotiff(outdir = outdir, 
+    covariates.dir <- stack_covariates_2_geotiff(outdir = outdir, 
                                                  year = lubridate::year(date[i]),
                                                  base.map.dir = base.map.dir, 
                                                  cov.tif.file.list = cov.tif.file.list, 
@@ -73,7 +79,7 @@ for (i in seq_along(date)) {
                "echo \"require (PEcAnAssimSequential)", 
                "      require (foreach)",
                "      require (purrr)",
-               "      downscale.qsub.main('@FOLDER_PATH@')", 
+               "      downscale_qsub_main('@FOLDER_PATH@')", 
                "    \" | R --no-save")
     jobsh <- gsub("@FOLDER_PATH@", folder.path, jobsh)
     writeLines(jobsh, con = file.path(folder.path, "job.sh"))
