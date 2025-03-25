@@ -4,10 +4,10 @@
 \alias{prepare_train_dat}
 \title{prepare_train_dat}
 \usage{
-prepare_train_dat(settings, analysis, covariates.dir, variable)
+prepare_train_dat(pts, analysis, covariates.dir, variable)
 }
 \arguments{
-\item{settings}{character: physical path that points to the pecan settings XML file.}
+\item{pts}{spatialpoints: spatial points returned by `terra::vectors` function.}
 
 \item{analysis}{numeric: data frame (rows: ensemble member; columns: site*state_variables) of updated ensemble analysis results from the `sda_enkf` function.}
 
@@ -16,7 +16,7 @@ prepare_train_dat(settings, analysis, covariates.dir, variable)
 \item{variable}{character: name of state variable. It should match up with the column names of the analysis data frame.}
 }
 \value{
-matrix within which the first sets of columns contain values of state variables for each ensemble mebers of every site, and the rest columns contain the corresponding covariates.
+matrix (num.sites, num.variables * num.ensemble + num.covariates) within which the first sets of columns contain values of state variables for each ensemble member of every site, and the rest columns contain the corresponding covariates.
 }
 \description{
 This function helps to create the training dataset of specific variable type and locations for downscaling.

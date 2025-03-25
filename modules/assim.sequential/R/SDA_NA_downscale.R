@@ -229,17 +229,15 @@ stack_covariates_2_df <- function(rast.dir, cores = parallel::detectCores()) {
 #' TODO: Add a ratio argument (training sample size/total sample size) so that we could calculate the out-of-sample accuracy.
 #' @title prepare_train_dat
 #' 
-#' @param settings character: physical path that points to the pecan settings XML file.
+#' @param pts spatialpoints: spatial points returned by `terra::vectors` function.
 #' @param analysis numeric: data frame (rows: ensemble member; columns: site*state_variables) of updated ensemble analysis results from the `sda_enkf` function.
 #' @param covariates.dir character: path to the exported covariates GeoTIFF file.
 #' @param variable character: name of state variable. It should match up with the column names of the analysis data frame. 
 #'
-#' @return matrix within which the first sets of columns contain values of state variables for each ensemble mebers of every site, and the rest columns contain the corresponding covariates.
+#' @return matrix (num.sites, num.variables * num.ensemble + num.covariates) within which the first sets of columns contain values of state variables for each ensemble member of every site, and the rest columns contain the corresponding covariates.
 #' 
 #' @author Dongchen Zhang
-prepare_train_dat <- function(settings, analysis, covariates.dir, variable) {
-  # convert settings into geospatial points.
-  pts <- pecan_settings_2_pts(settings)
+prepare_train_dat <- function(pts, analysis, covariates.dir, variable) {
   # read covariates.
   cov.rast <- terra::rast(covariates.dir)
   # extract covariates by locations.
@@ -386,7 +384,9 @@ downscale_rf_main <- function(settings, analysis, covariates.dir, time, variable
   }
   # prepare training data.
   PEcAn.logger::logger.info("Preparing training data.")
-  full_data <- prepare_train_dat(settings = settings, 
+  # convert settings into geospatial points.
+  pts <- pecan_settings_2_pts(settings)
+  full_data <- prepare_train_dat(pts = pts, 
                                  analysis = analysis, 
                                  covariates.dir = covariates.dir, 
                                  variable = variable)
