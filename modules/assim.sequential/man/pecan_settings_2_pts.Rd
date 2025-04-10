@@ -7,7 +7,7 @@
 pecan_settings_2_pts(settings)
 }
 \arguments{
-\item{settings}{PEcAn settings: either a character that points to the settings or the actual settings object will be accepted.}
+\item{settings}{PEcAn settings: either a character that points to the settings or shape file or the actual pecan settings object will be accepted.}
 }
 \value{
 terra spatial points object.
