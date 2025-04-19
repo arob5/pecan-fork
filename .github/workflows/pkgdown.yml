@@ -24,9 +24,9 @@ jobs:
     # Checkout source code
     - uses: actions/checkout@v4
 
-    # Install pkgdown
+    # Install dependencies
     - name: Install dependencies
-      run: Rscript -e 'install.packages("pkgdown")'
+      run: Rscript -e 'install.packages(c("pkgdown", "yaml", "desc"))'
 
     # Generate documentation using Makefile
     - name: Generate Package Documentation

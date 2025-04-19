@@ -2,6 +2,7 @@
 # Build pkgdown documentation for PEcAn packages
 library(pkgdown)
 library(yaml)
+library(desc)
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
   stop("No package names provided. Please pass package names as arguments.")
