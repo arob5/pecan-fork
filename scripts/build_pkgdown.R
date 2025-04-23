@@ -20,26 +20,6 @@ if (requireNamespace("PEcAn.logger", quietly = TRUE)) {
   }
 }
 
-pkg_config <- function() {
-
-  list(
-    url = "https://pecanproject.github.io/",
-    template = list(
-      bootstrap = 5,
-      includes = list(
-        before_navbar = paste0(
-          "<style>",
-          ".custom-back-button{position: absolute; top: 10px;left:10px; z-index: 1000; background-color: #f5f5f5; color: #000;border:none }.navbar-brand{ margin-left: 50px }",
-          "</style>\n",
-          "<button onclick='window.location.href=\"../index.html\"' ",
-          "class='custom-back-button btn btn-primary'>",
-          "← All Packages</button>"
-        )
-      )
-    )
-  )
-}
-
 logger("Building pkgdown docs for:", paste(packages, collapse = ", "))
 for (pkg in packages) {
   logger("Building pkgdown site for:", pkg)
@@ -48,11 +28,30 @@ for (pkg in packages) {
     if (!dir.exists(pkg)) {
       stop(paste("Package directory does not exist:", pkg))
     }
-    pkg_config_path <- file.path(pkg, "_pkgdown.yml")
-    pkg_config_data <- pkg_config()
-    yaml::write_yaml(pkg_config_data, pkg_config_path) 
     setwd(pkg) 
-    pkgdown::build_site() 
+    pkgdown::build_site(
+      pkg = ".",
+      override = list(
+        repo = list(
+          url = list(
+            source = paste0("https://github.com/PecanProject/pecan/blob/develop/", pkg)
+          )
+        ),
+        template = list(
+          bootstrap = 5,
+          includes = list(
+            before_navbar = paste0(
+              "<style>",
+              ".custom-back-button{position: absolute; top: 10px;left:10px; z-index: 1000; background-color: #f5f5f5; color: #000;border:none }.navbar-brand{ margin-left: 50px }",
+              "</style>\n",
+              "<button onclick='window.location.href=\"../index.html\"' ",
+              "class='custom-back-button btn btn-primary'>",
+              "← All Packages</button>"
+            )
+          )
+        )
+      )
+    )
     setwd(current_wd) 
     source_docs <- file.path(pkg, "docs")
     if (!dir.exists(source_docs)) {
@@ -92,7 +91,7 @@ before_text <- c(
   '<body>',
   '<h1>PEcAn package documentation</h1>',
   '<p>Function documentation and articles for each PEcAn package,',
-  '   generated from the package source using <a href="https://pkgdown.r-lib.org/" target="_blank">pkgdown</a> package.</p>',
+  '   generated from the package source using <a href="https://pkgdown.r-lib.org/" target="_blank">pkgdown</a>.</p>',
   '',
   '<ul>'
 )
