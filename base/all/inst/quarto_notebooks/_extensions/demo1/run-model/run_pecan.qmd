@@ -29,3 +29,13 @@ PEcAn provides utilities to process and validate settings before execution, ensu
 settings <- PEcAn.settings::prepare.settings(settings)
 ```
 
+# Convert Settings for Ecosystem Model
+
+Converts settings into the format required by the selected ecosystem model
+
+```{r convert-settings}
+settings <- PEcAn.workflow::do_conversions(settings)
+```
+
+
+
