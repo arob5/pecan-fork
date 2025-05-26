@@ -67,3 +67,26 @@ Start model simulations and retrieve output for analysis.
 PEcAn.workflow::start_model_runs(settings)
 runModule.get.results(settings)
 ```
+
+```{r get-plot-vars}
+library(ncdf4)
+# ⚙️ Use settings$outdir to build base path
+workflow_outdir <- settings$outdir            # Correct path from pecan.xml <outdir>
+
+# Default run_id for demo — you can replace this with your actual run ID
+# Tip: You can find your run ID from the "run-model" chunk output during execution
+run_id          <- "99000000195"
+
+#Select year to inspect
+year            <- 2006
+#Build NetCDF file path
+netcdf_file <- file.path(workflow_outdir, "out", run_id, paste0(year, ".nc"))
+
+#Open NetCDF file and show variable and dimension names
+nc <- nc_open(netcdf_file)
+cat("Variables:\n")
+print(names(nc$var))
+cat("\n Dimensions:\n")
+print(names(nc$dim))
+nc_close(nc)
+```
