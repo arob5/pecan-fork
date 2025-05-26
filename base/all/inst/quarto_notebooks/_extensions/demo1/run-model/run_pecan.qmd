@@ -1,0 +1,11 @@
+---
+title: "PEcAn Workflow"
+author: "PEcAn"
+format: pdf
+---
+
+# Load PEcAn packages
+
+```{r libraries}
+library("PEcAn.all")
+```
