@@ -9,3 +9,15 @@ format: pdf
 ```{r libraries}
 library("PEcAn.all")
 ```
+
+# Load PEcAn settings files.
+
+-   If you have pecan.xml generated from web,place the `pecan.xml` file in your directory and copy its file path. Assign this path to the **settings_path** variable.
+-   Alternatively, for a sample or initial run, you can use the example pecan.xml file available at:
+`/pecan/base/all/inst/quarto_notebooks/_extensions/demo1/run-model`.
+ 
+```{r load-settings}
+settings_path <- "~/pecan.xml" 
+settings <- PEcAn.settings::read.settings(settings_path)
+```
+
