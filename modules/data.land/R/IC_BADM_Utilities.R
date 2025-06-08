@@ -213,7 +213,7 @@ netcdf.writer.BADM <- function(lat, long, siteid, outdir, ens){
   input$dims <- dims
   input$vals <- variables
   
-
+  
   return(pool_ic_list2netcdf(
     input = input,
     outdir = outdir,
@@ -249,9 +249,9 @@ BADM_IC_process <- function(settings, dir, overwrite=TRUE){
     as.list()
 
   out.ense <- seq_len(settings$ensemble$size) %>%
-    purrr::map(~ netcdf.writer.BADM(new.site$lat,
-                             new.site$lon,
-                             new.site$id,
+    purrr::map(~ netcdf.writer.BADM(new.site$lat[.x],
+                             new.site$lon[.x],
+                             new.site$id[.x],
                              outdir=dir,
                              ens=.x))
   
