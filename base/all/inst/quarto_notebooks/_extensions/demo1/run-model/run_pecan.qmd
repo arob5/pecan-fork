@@ -18,7 +18,6 @@ library("PEcAn.all")
  
 ```{r load-settings}
 settings_path <- "~/pecan.xml" 
-settings <- PEcAn.settings::read.settings(settings_path)
 ```
 
 # Prepare and Validate Settings
@@ -26,6 +25,7 @@ settings <- PEcAn.settings::read.settings(settings_path)
 PEcAn provides utilities to process and validate settings before execution, ensuring that all required fields are correctly configured.
 
 ```{r prepare-settings}
+settings <- PEcAn.settings::read.settings(settings_path)
 settings <- PEcAn.settings::prepare.settings(settings)
 ```
 
