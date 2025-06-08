@@ -31,7 +31,7 @@ Read.IC.info.BADM <-function(lat, long){
   biomass.df <- U.S.SB %>%
     dplyr::filter(
       .data$NA_L2CODE == Code_Level,
-      grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|SOIL_CHEM", .data$VARIABLE)
+      grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|LIT_BIOMASS", .data$VARIABLE)
     ) %>%
     dplyr::select("SITE_ID", "GROUP_ID", "VARIABLE_GROUP", "VARIABLE", "DATAVALUE")
   
@@ -43,7 +43,7 @@ Read.IC.info.BADM <-function(lat, long){
     biomass.df <- U.S.SB %>%
       dplyr::filter(
         .data$NA_L1CODE == Code_Level,
-        grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|SOIL_CHEM", .data$VARIABLE)
+        grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|LIT_BIOMASS", .data$VARIABLE)
       ) %>%
       dplyr::select("SITE_ID", "GROUP_ID", "VARIABLE_GROUP", "VARIABLE", "DATAVALUE")
   }
@@ -53,7 +53,7 @@ Read.IC.info.BADM <-function(lat, long){
   if (nrow(biomass.df) < 3)  {
     Code_Level <- "ALL"
     biomass.df <- U.S.SB %>%
-      dplyr::filter(grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|SOIL_CHEM", .data$VARIABLE)) %>%
+      dplyr::filter(grepl("ROOT_|AG_BIOMASS|SOIL_STOCK|LIT_BIOMASS", .data$VARIABLE)) %>%
       dplyr::select("SITE_ID", "GROUP_ID", "VARIABLE_GROUP", "VARIABLE", "DATAVALUE")
   }
 
@@ -69,18 +69,16 @@ Read.IC.info.BADM <-function(lat, long){
         SoilIni <- NA
         litterIni <- NA
         Rootini <- NA
-        litterIni <- NA
         Date.in <- NA
         Organ.in <- NA
         # find what type of entry it is - biomass/soil or litter
         if (nrow(Gdf) > 0) {
           type <-
             sapply(c(
-              "*LIT",
               "*SOIL",
-              "*_BIOMASS",
+              "*_LIT_BIOMASS",
               "*_ROOT_BIOMASS",
-              "*_LIT_BIOMASS"
+              "*_BIOMASS"
             ),
             grepl,
             Gdf[1, 3])
@@ -100,9 +98,8 @@ Read.IC.info.BADM <-function(lat, long){
         
         #Converting DM to C content
         #Variations and determinants of carbon content in plants:a global synthesis - https://www.biogeosciences.net/15/693/2018/bg-15-693-2018.pdf
-        if (length(unit.in) > 0)
-        if (unit.in =="kgDM m-2") cov.factor <- cov.factor *0.48
-        
+        if (length(unit.in) > 0 && unit.in == "kgDM m-2") cov.factor <- cov.factor *0.48
+
         unit.ready <- ifelse(unit.in == "gC m-2",
                              "g/m^2",
                              ifelse(unit.in == "kgDM m-2", "kg/m^2",
@@ -132,7 +129,7 @@ Read.IC.info.BADM <-function(lat, long){
                                    as.numeric()*cov.factor,  unit.ready, "kg/m^2")#"AG_BIOMASS_CROP","AG_BIOMASS_SHRUB","AG_BIOMASS_TREE","AG_BIOMASS_OTHER"
           
         } else if (type == "*SOIL") {
-          val <- Gdf %>%
+          val <- Gdf %>%  
             dplyr::filter(grepl("SOIL_STOCK_C_ORG", .data$VARIABLE)) %>%
             dplyr::pull(.data$DATAVALUE) %>%
             as.numeric()
@@ -142,8 +139,7 @@ Read.IC.info.BADM <-function(lat, long){
           
         } else if (type == "*_LIT_BIOMASS") {
           litterIni <-
-            PEcAn.utils::ud_convert(Gdf$DATAVALUE[1] %>%
-                                   as.numeric()*cov.factor,  unit.ready, "kg/m^2")
+            PEcAn.utils::ud_convert(suppressWarnings(as.numeric(Gdf$DATAVALUE[1]))*cov.factor,  unit.ready, "kg/m^2")
           
         } else if (type == "*_ROOT_BIOMASS") {
           Rootini <-
@@ -156,20 +152,18 @@ Read.IC.info.BADM <-function(lat, long){
             Site = Gdf$SITE_ID %>% unique(),
             Var = Gdf$VARIABLE[1],
             Date = Date.in,
-            # Organ = Organ.in,
+            Organ = Organ.in,
             AGB = PlantWoodIni,
             soil_organic_carbon_content = SoilIni,
-            litter_carbon_content = litterIni
+            litter_carbon_content = litterIni,
+            root_carbon_content = Rootini
           )
         )
     })
   
-
  #cleaning
-ind <- apply(entries[,5:7], 1, function(x) all(is.na(x)))
+ind <- apply(entries[,5:8], 1, function(x) all(is.na(x)))
 entries <- entries[-which(ind),]
-
-
 
   return(entries)
 }
