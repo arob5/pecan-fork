@@ -213,8 +213,8 @@ netcdf.writer.BADM <- function(lat, long, siteid, outdir, ens){
   input$dims <- dims
   input$vals <- variables
   
-  
-  return(pool_ic_list2netcdf(
+  if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  return(PEcAn.data.land::pool_ic_list2netcdf(
     input = input,
     outdir = outdir,
     siteid = siteid,
