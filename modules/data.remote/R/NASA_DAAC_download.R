@@ -12,8 +12,7 @@
 #' @param outdir Character: path of the directory in which to save the
 #'   downloaded files. Default is the current work directory(getwd()).
 #' @param band Character: the band name (or vector of band names) of data to be requested.
-#' @param credential.folder Character: physical path to the folder that contains 
-#' the credential file. The default is the current working directory.
+#' @param credential_path Character: physical path to the credential file. The default NULL.
 #' @param doi Character: data DOI on the NASA DAAC server, it can be obtained 
 #' directly from the NASA ORNL DAAC data portal (e.g., GEDI L4A through 
 #' https://daac.ornl.gov/cgi-bin/dsviewer.pl?ds_id=2056).
@@ -52,16 +51,21 @@ NASA_DAAC_download <- function(ul_lat,
                                to,
                                outdir = getwd(),
                                band = NULL,
-                               credential.folder = getwd(),
+                               credential_path = NULL,
                                doi,
                                just_path = FALSE) {
   # Determine if we have enough inputs.
   if (is.null(outdir) & !just_path) {
     message("Please provide outdir if you want to download the file.")
-    return(0)
+    return(NA)
   }
   # setup DAAC Credentials.
-  netrc <- getnetrc(credential.folder)
+  # detect if we need the credential or not.
+  if (!just_path & is.null(credential_path)) {
+    PEcAn.logger::logger.info("Please provide the physical path to the credential file!")
+    return(NA)
+  }
+  netrc <- getnetrc(credential_path)
   # setup arguments for URL.
   daterange <- c(from, to)
   # grab provider and concept id from CMR based on DOI.
@@ -307,16 +311,15 @@ NASA_CMR_finder <- function(doi) {
 
 #' Set NASA DAAC credentials to the .netrc file.
 #'
-#' @param dl_dir Character: physical path to the folder that the .netrc file will be generated.
+#' @param dl_path Character: physical path to the .netrc credential file.
 #'
 #' @author Dongchen Zhang
-getnetrc <- function (dl_dir) {
-  netrc <- file.path(dl_dir, ".netrc")
-  netrc <- gsub("~", Sys.getenv("HOME"), netrc)
+getnetrc <- function (dl_path) {
+  netrc <- path.expand(dl_path)
   if (file.exists(netrc) == FALSE ||
       any(grepl("urs.earthdata.nasa.gov",
                 readLines(netrc))) == FALSE) {
-    netrc_conn <- file(netrc)
+    netrc_conn <- file(netrc, open = "at")
     writeLines(c(
       "machine urs.earthdata.nasa.gov",
       sprintf(

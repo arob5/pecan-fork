@@ -4,10 +4,10 @@
 \alias{getnetrc}
 \title{Set NASA DAAC credentials to the .netrc file.}
 \usage{
-getnetrc(dl_dir)
+getnetrc(dl_path)
 }
 \arguments{
-\item{dl_dir}{Character: physical path to the folder that the .netrc file will be generated.}
+\item{dl_path}{Character: physical path to the .netrc credential file.}
 }
 \description{
 Set NASA DAAC credentials to the .netrc file.

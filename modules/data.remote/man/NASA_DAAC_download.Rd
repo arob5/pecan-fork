@@ -14,7 +14,7 @@ NASA_DAAC_download(
   to,
   outdir = getwd(),
   band = NULL,
-  credential.folder = getwd(),
+  credential_path = NULL,
   doi,
   just_path = FALSE
 )
@@ -41,8 +41,7 @@ downloaded files. Default is the current work directory(getwd()).}
 
 \item{band}{Character: the band name (or vector of band names) of data to be requested.}
 
-\item{credential.folder}{Character: physical path to the folder that contains 
-the credential file. The default is the current working directory.}
+\item{credential_path}{Character: physical path to the credential file. The default NULL.}
 
 \item{doi}{Character: data DOI on the NASA DAAC server, it can be obtained 
 directly from the NASA ORNL DAAC data portal (e.g., GEDI L4A through 
