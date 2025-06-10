@@ -11,7 +11,7 @@
 #'   "yyyy-mm-dd".
 #' @param outdir Character: path of the directory in which to save the
 #'   downloaded files. Default is the current work directory(getwd()).
-#' @param band Character: the band name of data to be requested.
+#' @param band Character: the band name (or vector of band names) of data to be requested.
 #' @param credential.folder Character: physical path to the folder that contains 
 #' the credential file. The default is the current working directory.
 #' @param doi Character: data DOI on the NASA DAAC server, it can be obtained 
@@ -104,7 +104,7 @@ NASA_DAAC_download <- function(ul_lat,
       }
       # grab specific band.
       if (!is.null(band)) {
-        granules_href <- granules_href[which(grepl(band, granules_href, fixed = T))]
+        granules_href <- granules_href[which(grepl(paste(band, collapse = "|"), granules_href))]
       }
       page <- page + 1
     }

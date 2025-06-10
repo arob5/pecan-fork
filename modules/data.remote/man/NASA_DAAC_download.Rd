@@ -39,7 +39,7 @@ NASA_DAAC_download(
 \item{outdir}{Character: path of the directory in which to save the
 downloaded files. Default is the current work directory(getwd()).}
 
-\item{band}{Character: the band name of data to be requested.}
+\item{band}{Character: the band name (or vector of band names) of data to be requested.}
 
 \item{credential.folder}{Character: physical path to the folder that contains 
 the credential file. The default is the current working directory.}
