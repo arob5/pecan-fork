@@ -92,24 +92,6 @@ Once the settings have been read and prepared, it is often useful to inspect the
 str(settings)
 ```
 
-# Trait and Meta Analysis
-
-This section performs two critical steps in the PEcAn workflow: trait data retrieval and meta-analysis. These steps are essential for parameterizing your model with site-specific information.
-
-*   `runModule.get.trait.data(settings)`: This function retrieves trait data for the specified PFTs (Plant Functional Types) from the BETY database. It gathers observational data that will be used to parameterize your model.
-*   `runModule.run.meta.analysis(settings)`: After collecting trait data, this function performs a meta-analysis to synthesize the trait data and generate probability distributions for model parameters.
-*   `write.settings(settings, outputfile = "pecan_checked.xml")`: This function saves the updated settings to a new XML file, preserving all the changes made during the trait and meta-analysis process.
-
-```{r trait-meta-analysis}
-# Retrieve trait data for the specified PFTs
-settings <- PEcAn.workflow::runModule.get.trait.data(settings)
-# Save the updated settings to a new XML file
-PEcAn.settings::write.settings(settings, outputfile = "pecan.TRAIT.xml")
-# Perform meta-analysis on the trait data
-PEcAn.MA::runModule.run.meta.analysis(settings)
-```
-
-
 # Run Model Simulations and Fetch Results
 
 This section executes the actual model simulations and retrieves the results. The process is managed by PEcAn's workflow system, which handles the execution of your chosen ecosystem model.
