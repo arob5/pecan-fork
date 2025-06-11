@@ -106,21 +106,9 @@ settings <- PEcAn.workflow::runModule.get.trait.data(settings)
 # Perform meta-analysis on the trait data
 PEcAn.MA::runModule.run.meta.analysis(settings)
 # Save the updated settings to a new XML file
-PEcAn.settings::write.settings(settings, outputfile = "pecan.TRAIT.xml")```
-
-# Write Model Configuration Files
-
-This section generates the model-specific configuration files needed to run your simulations. The process involves converting the PEcAn settings into the format required by your chosen ecosystem model.
-
-*   `runModule.run.write.configs(settings)`: This function takes your PEcAn settings and generates the necessary configuration files for your selected model. It handles the translation of PEcAn parameters into model-specific formats.
-*   `write.settings(settings, outputfile = "pecan.CONFIGS.xml")`: After generating the configuration files, this function saves the updated settings to a new XML file, which now includes paths to the generated model configuration files.
-
-```{r write-configs}
-# Generate model-specific configuration files
-settings <-PEcAn.workflow::runModule.run.write.configs(settings)
-# Save the updated settings with configuration file paths
-PEcAn.settings::write.settings(settings, outputfile = "pecan.CONFIGS.xml")
+PEcAn.settings::write.settings(settings, outputfile = "pecan.TRAIT.xml")
 ```
+
 
 # Run Model Simulations and Fetch Results
 
