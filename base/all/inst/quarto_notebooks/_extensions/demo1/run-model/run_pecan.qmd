@@ -35,15 +35,6 @@ settings <- PEcAn.settings::prepare.settings(settings)
 str(settings)
 ```
 
-# Convert Settings for Ecosystem Model
-
-Converts settings into the format required by the selected ecosystem model
-
-```{r convert-settings}
-settings <- PEcAn.workflow::do_conversions(settings)
-```
-
-
 # Write Model Configuration Files
 
 Generate model configuration files before simulation runs.
