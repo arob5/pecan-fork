@@ -103,10 +103,10 @@ This section performs two critical steps in the PEcAn workflow: trait data retri
 ```{r trait-meta-analysis}
 # Retrieve trait data for the specified PFTs
 settings <- PEcAn.workflow::runModule.get.trait.data(settings)
-# Perform meta-analysis on the trait data
-PEcAn.MA::runModule.run.meta.analysis(settings)
 # Save the updated settings to a new XML file
 PEcAn.settings::write.settings(settings, outputfile = "pecan.TRAIT.xml")
+# Perform meta-analysis on the trait data
+PEcAn.MA::runModule.run.meta.analysis(settings)
 ```
 
 
@@ -118,7 +118,7 @@ This section executes the actual model simulations and retrieves the results. Th
 
 ```{r run-model}
 # Start the model simulations
-PEcAn.workflow::start_model_runs(settings)
+PEcAn.workflow::runModule_start_model_runs(settings)
 ```
 
 ```{r get-plot-vars}
