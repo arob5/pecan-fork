@@ -50,7 +50,28 @@ settings <- createMultiSiteSettings(settings, selected_sites) ## populates setti
 
 ```
 
+
 ---
+
+## Group by multiple characterstics
+
+Say you're developing a new parameterization for the conifer PFT and you want to test it specifically at high elevation. By filtering and reassigning, this can be done without any edits to the saved `site_info.csv`:
+
+```{r}
+settings$pfts <- settings$pfts |>
+  append(list(
+    name="new_conifer",
+    posterior.files = "/path/to/new_conifer/post.distns.Rdata"))
+neon_hi_elev <- site_info |>
+  filter(
+    site_group == "NEON",
+    elev > 1000) |>
+  mutate(site.pft = "new_conifer")
+settings <- createMultiSiteSettings(settings, neon_hi_elev)
+```
+
+---
+
 Example of how settings will look like before and after the execution of "createMultiSiteSettings()" 
 
 Settings object before the execution of 'createMultiSiteSettings()'
@@ -108,26 +129,6 @@ settings <- list(
 str(settings)
 
 ```
-
----
-
-## Group by multiple characterstics
-
-Say you're developing a new parameterization for the conifer PFT and you want to test it specifically at high elevation. By filtering and reassigning, this can be done without any edits to the saved `site_info.csv`:
-
-```{r}
-settings$pfts <- settings$pfts |>
-  append(list(
-    name="new_conifer",
-    posterior.files = "/path/to/new_conifer/post.distns.Rdata"))
-neon_hi_elev <- site_info |>
-  filter(
-    site_group == "NEON",
-    elev > 1000) |>
-  mutate(site.pft = "new_conifer")
-settings <- createMultiSiteSettings(settings, neon_hi_elev)
-```
-
 
 ---
 
