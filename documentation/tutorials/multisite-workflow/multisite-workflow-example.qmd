@@ -6,8 +6,10 @@ editor: visual
 
 ## Introduction
 
-This notebook demonstrates how to use a flat-file (`site_info.csv`) to set up a multisite workflow in PEcAn, without querying the database.  
+This notebook demonstrates how to set up a multisite workflow in PEcAn that uses a subset of the sites defined in a flat-file (`site_info.csv`), without querying the database.  
 You will learn how to read site metadata, filter by group, and create a MultiSettings object for your runs.
+
+Sites stored in the BETY database can be queried by `sitegroup` to retrieve predefined sets of sites. Inside the database a sitegroup is nothing but a name given to a list of siteIDs, so in a flat file context we can do the same thing by adding one or more grouping columns.
 
 ---
 
