@@ -600,14 +600,25 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     }
 
   } else if (length(settings$run$inputs$poolinitcond$path) > 0) {
-    ICs_num <- length(settings$run$inputs$poolinitcond$path)
-    IC.path <- settings$run$inputs$poolinitcond$path[[1]] 
+    IC.path <- settings$run$inputs$poolinitcond$path
+    if (length(IC.path) > 1) {
+      PEcAn.logger::logger.error(
+        "write.config.SIPNET needs one poolinitcond path",
+        "got", length(IC.path)
+      )
+    }
     
     IC.pools <- PEcAn.data.land::prepare_pools(IC.path, constants = list(sla = SLA))
     
     if (!is.null(IC.pools)) {
       IC.nc <- ncdf4::nc_open(IC.path) #for additional variables specific to SIPNET
-      ic_ncvars_wanted <- c(
+
+      # Optional variables: Use these if present, but don't complain if missing
+      # TODO: Each variable here is used in a corresponding `if` block below,
+      # which are mixed in among the variables from prepare_pools.
+      # Should reorder to separate these, and consider making this an input
+      # to let user control at runtime what's optional and what's mandatory
+      ic_ncvars_to_try <- c(
         "nee",
         "SoilMoistFrac",
         "SWE",
@@ -615,8 +626,8 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
         "date_of_senescence",
         "Microbial Biomass C"
       )
-      ic_has_ncvars <- ic_ncvars_wanted %in% names(IC.nc$var)
-      names(ic_has_ncvars) <- ic_ncvars_wanted
+      ic_has_ncvars <- ic_ncvars_to_try %in% names(IC.nc$var)
+      names(ic_has_ncvars) <- ic_ncvars_to_try
 
       ## plantWoodInit gC/m2
       if ("wood" %in% names(IC.pools)) {

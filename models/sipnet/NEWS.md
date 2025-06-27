@@ -7,7 +7,7 @@
 ## Fixed
 
 * `write.config.SIPNET` now checks more carefully whether an optional variable exists in an initial condition file before trying to read it, therefore printing fewer messages about (expectedly) missing variables. (#3545)
-* When passed a vector of input paths, `write.config.SIPNET` was choosing one at random; it now uses only the first (Blesson Thomas, #3298). Note that a single input path per call has always been the intended usage; being passed many was a second bug in PEcAn.uncertainty that is also now fixed.
+* When passed a vector of multiple input paths, `write.config.SIPNET` was choosing one at random; it now throws an error (Blesson Thomas, #3298). Note that a single input path per call has always been the intended usage; being passed many was a second bug in PEcAn.uncertainty that is also now fixed.
 
 
 # PEcAn.SIPNET 1.9.0
