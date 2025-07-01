@@ -67,7 +67,7 @@ neon_hi_elev <- site_info |>
     site_group == "NEON",
     elev > 1000) |>
   mutate(site.pft = "new_conifer")
-settings <- createMultiSiteSettings(settings, neon_hi_elev)
+settings_neon <- createMultiSiteSettings(settings, neon_hi_elev)
 ```
 
 ---
