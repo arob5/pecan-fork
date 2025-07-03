@@ -47,9 +47,9 @@
 met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date,
                              overwrite = FALSE, verbose = FALSE, year.fragment = FALSE, ...) {
  
-  
-
-  PEcAn.logger::logger.info("START met2model.SIPNET")
+  if (verbose) {
+    PEcAn.logger::logger.info("START met2model.SIPNET")
+  }
   start_date <- as.POSIXlt(start_date, tz = "UTC")
   end_date <- as.POSIXlt(end_date, tz = "UTC")
   if (year.fragment) { # in.prefix is not guaranteed to contain the file extension.
@@ -90,11 +90,15 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
                         enddate = end_date,
                         dbfile.name = out.file,
                         stringsAsFactors = FALSE)
-  PEcAn.logger::logger.info("internal results")
-  PEcAn.logger::logger.info(results)
+  if (verbose) {
+    PEcAn.logger::logger.info("internal results")
+    PEcAn.logger::logger.info(results)
+  }
   
   if (file.exists(out.file.full) && !overwrite) {
-    PEcAn.logger::logger.debug("File '", out.file.full, "' already exists, skipping to next file.")
+    if (verbose) {
+      PEcAn.logger::logger.debug("File '", out.file.full, "' already exists, skipping to next file.")
+    }
     return(invisible(results))
   }
   
@@ -119,7 +123,9 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
   for (year in start_year:end_year) {
     
     skip <- FALSE
-    PEcAn.logger::logger.info(year)
+    if (verbose) {
+      PEcAn.logger::logger.info(year)
+    }
     
     diy <- PEcAn.utils::days_in_year(year)
     
@@ -131,8 +137,8 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
     
     if (file.exists(old.file)) {
       ## open netcdf
-      nc <- ncdf4::nc_open(old.file)  
-      
+      nc <- ncdf4::nc_open(old.file)
+      nc.var.names <- names(nc$var)
       ## convert time to seconds
       sec <- nc$dim$time$vals
       sec <- PEcAn.utils::ud_convert(sec, unlist(strsplit(nc$dim$time$units, " "))[1], "seconds")
@@ -155,12 +161,17 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
       Tair <-ncdf4::ncvar_get(nc, "air_temperature")  ## in Kelvin
       Tair_C <- PEcAn.utils::ud_convert(Tair, "K", "degC")
       Qair <-ncdf4::ncvar_get(nc, "specific_humidity")  #humidity (kg/kg)
-      ws <- try(ncdf4::ncvar_get(nc, "wind_speed"))
-      if (!is.numeric(ws)) {
+      
+      # if we have wind speed.
+      if ("wind_speed" %in% nc.var.names) {
+        ws <- ncdf4::ncvar_get(nc, "wind_speed")
+      } else {
         U <- ncdf4::ncvar_get(nc, "eastward_wind")
         V <- ncdf4::ncvar_get(nc, "northward_wind")
         ws <- sqrt(U ^ 2 + V ^ 2)
-        PEcAn.logger::logger.info("wind_speed absent; calculated from eastward_wind and northward_wind")
+        if (verbose) {
+          PEcAn.logger::logger.info("wind_speed absent; calculated from eastward_wind and northward_wind")
+        }
       }
       
       Rain <- ncdf4::ncvar_get(nc, "precipitation_flux")
@@ -169,32 +180,42 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
 
       SW <- ncdf4::ncvar_get(nc, "surface_downwelling_shortwave_flux_in_air")  ## in W/m2
       
-      PAR <- try(ncdf4::ncvar_get(nc, "surface_downwelling_photosynthetic_photon_flux_in_air"))  ## in umol/m2/s
-      if (!is.numeric(PAR)) {
+      # if we have PAR.
+      if ("surface_downwelling_photosynthetic_photon_flux_in_air" %in% nc.var.names) {
+        PAR <- ncdf4::ncvar_get(nc, "surface_downwelling_photosynthetic_photon_flux_in_air")
+      } else {
         PAR <- PEcAn.utils::ud_convert(PEcAn.data.atmosphere::sw2ppfd(SW), "umol ", "mol")
-        PEcAn.logger::logger.info("surface_downwelling_photosynthetic_photon_flux_in_air absent; PAR set to SW * 0.45")
+        if (verbose) {
+          PEcAn.logger::logger.info("surface_downwelling_photosynthetic_photon_flux_in_air absent; PAR set to SW * 0.45")
+        }
       }
       
-      soilT <- try(ncdf4::ncvar_get(nc, "soil_temperature"))
-      if (!is.numeric(soilT)) {
+      # if we have soil temperature.
+      if ("soil_temperature" %in% nc.var.names) {
+        soilT <- ncdf4::ncvar_get(nc, "soil_temperature")
+        soilT <- PEcAn.utils::ud_convert(soilT, "K", "degC")
+      } else {
         # approximation borrowed from SIPNET CRUNCEP preprocessing's tsoil.py
         tau <- 15 * tstep
         filt <- exp(-(1:length(Tair)) / tau)
         filt <- (filt / sum(filt))
         soilT <- stats::convolve(Tair, filt)
         soilT <- PEcAn.utils::ud_convert(soilT, "K", "degC")
-        PEcAn.logger::logger.info("soil_temperature absent; soilT approximated from Tair")
-      } else {
-        soilT <- PEcAn.utils::ud_convert(soilT, "K", "degC")
+        if (verbose) {
+          PEcAn.logger::logger.info("soil_temperature absent; soilT approximated from Tair")
+        }
       }
       
       SVP <- PEcAn.utils::ud_convert(PEcAn.data.atmosphere::get.es(Tair_C), "millibar", "Pa")  ## Saturation vapor pressure
-      VPD <- try(ncdf4::ncvar_get(nc, "water_vapor_saturation_deficit"))  ## in Pa
-      if (!is.numeric(VPD)) {
-
+      
+      # if we have VPD.
+      if ("water_vapor_saturation_deficit" %in% nc.var.names) {
+        VPD <- ncdf4::ncvar_get(nc, "water_vapor_saturation_deficit")
+      } else {
         VPD <- SVP * (1 - PEcAn.data.atmosphere::qair2rh(Qair, Tair_C, press = press/100))
-
-        PEcAn.logger::logger.info("water_vapor_saturation_deficit absent; VPD calculated from Qair, Tair, and SVP (saturation vapor pressure) ")
+        if (verbose) {
+          PEcAn.logger::logger.info("water_vapor_saturation_deficit absent; VPD calculated from Qair, Tair, and SVP (saturation vapor pressure) ")
+        }
       }
       e_a <- SVP - VPD
       VPDsoil <- PEcAn.utils::ud_convert(PEcAn.data.atmosphere::get.es(soilT), "millibar", "Pa") *
@@ -202,7 +223,9 @@ met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date
       
       ncdf4::nc_close(nc)
     } else {
-      PEcAn.logger::logger.info("Skipping to next year")
+      if (verbose) {
+        PEcAn.logger::logger.info("Skipping to next year")
+      }
       next
     }
     
