@@ -34,7 +34,7 @@ Before running this notebook, make sure you have:
 1. Each section is clearly marked with a heading
 2. Code chunks are provided with explanations
 3. You can run the code chunks sequentially
-4. Feel free to modify parameters to suit your needs
+4. Once you have successfully run the demo, you can modify parameters to configure new runs and analyses
 
 Let's get started!
 
