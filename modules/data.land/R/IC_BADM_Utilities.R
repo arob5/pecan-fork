@@ -234,6 +234,12 @@ netcdf.writer.BADM <- function(lat, long, siteid, outdir, ens){
 #' @export
 #'
 BADM_IC_process <- function(settings, dir, overwrite=TRUE){
+  
+  # check if this is a single-site or multi-site configuration
+  if ("run" %in% names(settings)) {
+    settings <- list(settings)
+  }
+  
   # create site info.
   new.site <- 
     settings %>% 
@@ -247,16 +253,33 @@ BADM_IC_process <- function(settings, dir, overwrite=TRUE){
     })%>% 
     dplyr::bind_rows() %>% 
     as.list()
-
-  out.ense <- seq_len(settings$ensemble$size) %>%
-    purrr::map(~ netcdf.writer.BADM(new.site$lat[.x],
-                             new.site$lon[.x],
-                             new.site$id[.x],
-                             outdir=dir,
-                             ens=.x))
   
-  out.ense <- out.ense %>%
-    stats::setNames(rep("path", length(out.ense)))
+  # process each site configuration
+  out.ense <- list()
+  
+  for (i in seq_along(settings)) {
+    site.settings <- settings[[i]]
+    ens.size <- ens.size <- max(1, site.settings$ensemble$size %||% 1)
+    
+    # get site info for this specific site
+    site.info <- list(
+      id = new.site$id[i],
+      lat = new.site$lat[i], 
+      lon = new.site$lon[i]
+    )
+    
+    site.outputs <- seq_len(ens.size) %>%
+      purrr::map(~ netcdf.writer.BADM(site.info$lat,
+                                      site.info$lon,
+                                      site.info$id,
+                                      outdir=dir,
+                                      ens=.x))
+    
+    site.outputs <- site.outputs %>%
+      stats::setNames(rep("path", length(site.outputs)))
+    
+    out.ense <- c(out.ense, site.outputs)
+  }
   
   return(out.ense)
 }
