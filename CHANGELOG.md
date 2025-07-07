@@ -18,7 +18,7 @@ For more information about this file see also [Keep a Changelog](http://keepacha
   - You can compile all pkgdown pages locally at any time with `make pkgdocs`.
 
 - Initial Quarto notebook `run_pecan.qmd` to run PEcAn Demo 1 workflow from a pre-generated `pecan.xml` file, enabling notebook-based model runs, analysis, and visualization.
- - Directory structure for PEcAn Quarto notebooks under `pecan/base/inst/quarto-notebooks/_extensions/demo1/`.
+ - Directory structure for PEcAn Quarto notebooks under `/home/aritra/Downloads/projects/gsoc-codebases/pecan/documentation/tutorials/01_Demo_Basic_Run_quarto`.
  - Support for inspecting and plotting NetCDF output variables within the notebook workflow.
 
 ### Fixed
