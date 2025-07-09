@@ -38,14 +38,14 @@
 #'  (will only use the year part of the date)
 #' @param end_date the end date of the data to be downloaded
 #'  (will only use the year part of the date)
-#' @param var.names character: list of variable names to be extracted.
+#' @param var.names character: list of variable names to be extracted. Default is NULL.
 #' @param overwrite should existing files be overwritten
 #' @param verbose should the function be very verbose
 #' @param year.fragment the function should ignore whether or not the data is
 #'  stored as a set of complete years (such as for forecasts).
 #' @param ... Additional arguments, currently ignored
 #' @author Luke Dramko, Michael Dietze, Alexey Shiklomanov, Rob Kooper
-met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date, var.names,
+met2model.SIPNET <- function(in.path, in.prefix, outfolder, start_date, end_date, var.names = NULL,
                              overwrite = FALSE, verbose = FALSE, year.fragment = FALSE, ...) {
  
   if (verbose) {
