@@ -122,8 +122,7 @@ ic_process <- function(settings, input, dir, overwrite = FALSE){
   # retrieve model type info
   if(!is.null(settings$model$name)){
     model$name <- settings$model$name
-  }
- else {
+  } else {
     modeltype_id <- PEcAn.DB::db.query(paste0("SELECT modeltype_id FROM models where id = '", model$id, "'"), con)[[1]]
     model$name <- PEcAn.DB::db.query(paste0("SELECT name FROM modeltypes where id = '", modeltype_id, "'"), con)[[1]]
   }
