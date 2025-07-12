@@ -120,7 +120,7 @@ ic_process <- function(settings, input, dir, overwrite = FALSE){
   machine <- PEcAn.DB::db.query(paste0("SELECT * from machines where hostname = '", machine.host, "'"), con)
   
   # retrieve model type info
-  if(!is.null(settings$model$name)){
+  if(isTRUE(nzchar(settings$model$name))){
     model$name <- settings$model$name
   } else {
     modeltype_id <- PEcAn.DB::db.query(paste0("SELECT modeltype_id FROM models where id = '", model$id, "'"), con)[[1]]
