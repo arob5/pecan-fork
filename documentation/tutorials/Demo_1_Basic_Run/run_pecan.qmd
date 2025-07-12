@@ -149,7 +149,7 @@ After the model simulation completes, we need to extract the results and prepare
 4. Loading model output
 
 ```{r get-plot-vars}
-runid <- as.character(read.table(paste(settings$outdir, "/run/", "runs.txt", sep = ""))[1, 1])
+runid <- as.character(read.table(paste(settings$outdir, "/run/", "runs.txt", sep = ""))[1, 1]) # Note: if you are using an xml from a run with multiple ensembles this line will provide only the first run id
 outdir <- paste(settings$outdir, "/out/", runid, sep = "")
 start.year <- as.numeric(lubridate::year(settings$run$start.date))
 end.year <- as.numeric(lubridate::year(settings$run$end.date))
