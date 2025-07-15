@@ -27,7 +27,7 @@ merge_image_tiles <- function(folder.path,
                                                  COMPRESS = "DEFLATE")) {
   # Detect if we have the gdalwarp module installed.
   # check shell environments.
-  if ("try-error" %in% class(try(system("gdalwarp"), silent = T))) {
+  if ("try-error" %in% class(try(system("gdal"), silent = T))) {
     PEcAn.logger::logger.info("The gdalwarp function is not detected in shell command.")
     return(NA)
   }
