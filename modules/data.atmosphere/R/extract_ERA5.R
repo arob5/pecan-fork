@@ -65,21 +65,48 @@ extract.nc.ERA5 <-
     )
     sample_file <- file.path(in.path, paste0(in.prefix, years[1], ".nc"))
     if (!file.exists(sample_file)) {
-      PEcAn.logger::logger.severe(paste0("Sample file not found: ", sample_file))
+      PEcAn.logger::logger.severe(paste0("ERA5 input file not found: ", sample_file,
+                                         ". please check the input path and file prefix."))
     }
     
     # Determine data type (ensemble vs reanalysis)
     nc_test <- ncdf4::nc_open(sample_file)
-    is_ensemble <- "number" %in% names(nc_test$dim) || any(sapply(nc_test$var, function(v) v$ndims == 4))
-    ncdf4::nc_close(nc_test)
-    
-    if (is_ensemble) {
-      ensemblesN <- seq(1, 10)
-      if (verbose) PEcAn.logger::logger.info("Processing ERA5 ensemble data")
+    # initialize variables
+    is_ensemble <- FALSE
+    ens_size <- 1
+    if ("number" %in% names(nc_test$dim)) {
+      is_ensemble <- TRUE
+      ens_size <- nc_test$dim$number$len
+      if (verbose) PEcAn.logger::logger.info(paste0("detected new ERA5 format with ", ens_size, " ensemble members"))
+    } else if (any(sapply(nc_test$var, function(v) v$ndims == 4))) {
+      is_ensemble <- TRUE
+      var_4d <- names(nc_test$var)[sapply(nc_test$var, function(v) v$ndims == 4)][1]
+      ens_size <- nc_test$var[[var_4d]]$size[4]
+      if (verbose) PEcAn.logger::logger.info(paste0("detected new ERA5 format with ", ens_size, " ensemble members"))
     } else {
-      ensemblesN <- 1 
-      if (verbose) PEcAn.logger::logger.info("Processing ERA5 reanalysis data")
+      var_3d <- names(nc_test$var)[sapply(nc_test$var, function(v) v$ndims == 3)][1]
+      if (!is.na(var_3d)) {
+        tryCatch({
+          test_brick <- raster::brick(sample_file, varname = var_3d)
+          total_layers <- raster::nlayers(test_brick)
+          time_size <- nc_test$dim$time$len
+          
+          if (total_layers > time_size && total_layers %% time_size == 0) {
+            is_ensemble <- TRUE
+            ens_size <- total_layers / time_size
+            if (verbose) PEcAn.logger::logger.info(paste0("detected old ERA5 format with ", ens_size, " ensemble members"))
+          } else {
+            if (verbose) PEcAn.logger::logger.info("processing ERA5 reanalysis data")
+          }
+        }, error = function(e) {
+          if (verbose) PEcAn.logger::logger.info("processing ERA5 reanalysis data")
+        })
+      } else {
+        if (verbose) PEcAn.logger::logger.info("processing ERA5 reanalysis data")
+      }
     }
+    ensemblesN <- if (is_ensemble) seq(1, ens_size) else 1
+    ncdf4::nc_close(nc_test)
     
     # initialize parallel.
     cl <- parallel::makeCluster(ncores)
@@ -97,6 +124,16 @@ extract.nc.ERA5 <-
       # report progress.
       PEcAn.logger::logger.info(paste0("\nProcessing year ", years[i], ".\n"))
       year <- years[i]
+      year_start <- if (year == lubridate::year(start_date)) {
+        start_date
+      } else {
+        paste0(year, "-01-01")
+      }
+      year_end <- if (year == lubridate::year(end_date)) {
+        end_date
+      } else {
+        paste0(year, "-12-31")
+      }
       ncfile <- file.path(in.path, paste0(in.prefix, year, ".nc"))
       # open the file
       nc_data <- ncdf4::nc_open(ncfile)
@@ -217,14 +254,15 @@ extract.nc.ERA5 <-
                                        out <- met2CF.ERA5(
                                          slat[s.ind],
                                          slon[s.ind],
-                                         paste0(year,"-01-01"),
-                                         paste0(year,"-12-31"),
+                                         year_start,
+                                         year_end,
                                          sitename=newsite[s.ind],
                                          outfolder,
                                          data.point,
                                          overwrite = FALSE,
                                          verbose = verbose,
-                                         is_ensemble = is_ensemble
+                                         is_ensemble = is_ensemble,
+                                         ens_size = ens_size
                                        )
                                        out %>% purrr::map(~.x[['file']]) %>% unlist
                                      }
