@@ -185,7 +185,7 @@ gdal_conversion <- function(in_path, outfolder = NULL, band_name = NULL, just_ba
 #' @author Dongchen Zhang
 get_subdatasets <- function(in_path) {
   image.info <- terra::describe(in_path)
-  image_rawnames <- image.info[grep(glob2rx("*SUBDATASET*NAME*"), image.info)]
+  image_rawnames <- image.info[grep(utils::glob2rx("*SUBDATASET*NAME*"), image.info)]
   sds <- sapply(X = seq(length(image_rawnames)), 
                 FUN = function(X) {
                   split1 <- strsplit(image_rawnames[X], "=")

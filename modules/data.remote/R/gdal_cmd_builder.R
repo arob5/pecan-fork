@@ -94,11 +94,6 @@ gdal_cmd_builder <- function(executable,parameter_variables=c(),
                              python_util=FALSE,
                              verbose=FALSE)
 {
-  if(verbose) message("Checking installation...")
-  # path to executable check in here?
-  gdal_setInstallation()
-  if(is.null(getOption("gdalUtils_gdalPath"))) return()
-  
   executable <- normalizePath(list.files(
     getOption("gdalUtils_gdalPath")[[gdal_installation_id]]$path,
     executable,full.names=TRUE))
@@ -401,5 +396,24 @@ gdal_cmd_builder <- function(executable,parameter_variables=c(),
   #	}
   
   return(cmd)
-  
+}
+
+#' qm
+#' 
+#' Wraps an input in quotation marks.
+#' 
+#' @param x Character or Numeric.
+#' 
+#' @return A character string that begins and ends with quotation marks.
+#' @author Jonathan A. Greenberg
+#' 
+#' @examples {
+#' qm("Hi!")
+#' qm(42) 
+#' }
+#' @export
+
+qm <- function(x)
+{
+  paste('"',x,'"',sep="")
 }
