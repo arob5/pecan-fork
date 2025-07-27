@@ -117,7 +117,9 @@ merge_image_tiles <- function(folder.path,
 #' @param band_name character: band name of the image. Default is NULL.
 #' @param just_band_name boolean: if we just want the band names of the image file. Default is TRUE.
 #' @param target_format character: target image format. Default is .tif.
-#' @author Dongchen Zhang.
+#' @export
+#' 
+#' @author Dongchen Zhang
 #' @examples
 #' \dontrun{
 #' in_path <- "/projectnb/dietzelab/malmborg/CARB/HLS_data/MSLSP_10SDH_2016.nc"
@@ -139,12 +141,12 @@ merge_image_tiles <- function(folder.path,
 #' }
 gdal_conversion <- function(in_path, outfolder = NULL, band_name = NULL, just_band_name = T, target_format = ".tif") {
   # check if package has been installed.
-  if (!"gdalUtils" %in% installed.packages()) {
-    PEcAn.logger::logger.info("Please install the gdalUtils package before using this function!")
-    return(0)
+  if ("try-error" %in% class(try(system("gdal_translate"), silent = T))) {
+    PEcAn.logger::logger.info("The gdalwarp function is not detected in shell command.")
+    return(NA)
   }
   # grab subdataset paths.
-  sds <- gdalUtils::get_subdatasets(in_path)
+  sds <- get_subdatasets(in_path)
   # grab band names.
   band_names <- sds %>% purrr::map(function(s){
     str <- strsplit(s, split = ":", fixed = T)[[1]]
@@ -171,6 +173,23 @@ gdal_conversion <- function(in_path, outfolder = NULL, band_name = NULL, just_ba
   target_file_name <- paste0(strsplit(origin_file_name, split = ".", fixed = T)[[1]][1], "_", band_name, target_format)
   # conversion.
   band.ind <- which(band_names == band_name)
-  out <- gdalUtils::gdal_translate(sds[band.ind], file.path(outfolder, target_file_name))
+  out <- gdal_translate(sds[band.ind], file.path(outfolder, target_file_name))
   return(file.path(outfolder, target_file_name))
+}
+
+#' @description This function provides tool for reading band names of remote sensing image.
+#' 
+#' @title get_subdatasets.
+#' @param in_path character: physical path to the image file.
+#' 
+#' @author Dongchen Zhang
+get_subdatasets <- function(in_path) {
+  image.info <- terra::describe(in_path)
+  image_rawnames <- image.info[grep(glob2rx("*SUBDATASET*NAME*"), image.info)]
+  sds <- sapply(X = seq(length(image_rawnames)), 
+                FUN = function(X) {
+                  split1 <- strsplit(image_rawnames[X], "=")
+                  return(gsub("\"", "", split1[[1]][2]))
+                })
+  return(sds)
 }
