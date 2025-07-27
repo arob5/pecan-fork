@@ -59,6 +59,7 @@
 #'
 #' @references \url{http://www.gdal.org/gdal_translate.html}
 #' @examples
+#' \dontrun{
 #' # We'll pre-check to make sure there is a valid GDAL install
 #' # and that raster and rgdal are also installed.
 #' # Note this isn't strictly neccessary, as executing the function will
@@ -81,7 +82,7 @@
 #' gdal_translate(src_dataset,file.path(outdir,"tahoe_highrez_tiled.tif"),of="GTiff",
 #' srcwin="1 1 100 100",output_Raster=TRUE,verbose=TRUE)
 #' }
-#' \dontrun{ 
+#'  
 #' # Extract the first subdataset from an HDF4 file:
 #' hdf4_dataset <- system.file("external/test_modis.hdf", package="gdalUtils")
 #' gdal_translate(hdf4_dataset,file.path(outdir,"test_modis_sd1.tif"),sd_index=1)
@@ -106,6 +107,11 @@ gdal_translate <- function(src_dataset,dst_dataset,ot,strict,of="GTiff",
                            ...
 )
 {
+  if(output_Raster && (!requireNamespace("raster")))
+  {
+    warning("raster not installed. Please install.packages(c('raster')) or set output_Raster=FALSE")
+    return(NULL)
+  }
   parameter_values <- as.list(environment())
   if(!missing(sd_index))
   {

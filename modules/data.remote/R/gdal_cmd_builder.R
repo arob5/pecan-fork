@@ -94,6 +94,11 @@ gdal_cmd_builder <- function(executable,parameter_variables=c(),
                              python_util=FALSE,
                              verbose=FALSE)
 {
+  if(verbose) message("Checking installation...")
+  # path to executable check in here?
+  gdal_setInstallation()
+  if(is.null(getOption("gdalUtils_gdalPath"))) return()
+  
   executable <- normalizePath(list.files(
     getOption("gdalUtils_gdalPath")[[gdal_installation_id]]$path,
     executable,full.names=TRUE))
