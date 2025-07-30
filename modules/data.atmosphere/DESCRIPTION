@@ -61,6 +61,7 @@ Imports:
     zoo
 Suggests:
     doParallel,
+    ecmwfr,
     foreach,
     furrr,
     future,
