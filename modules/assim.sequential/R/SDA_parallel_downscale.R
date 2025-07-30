@@ -251,10 +251,10 @@ parallel_train <- function(full_data, method = "randomForest", cores = parallel:
                                  model <- xgboost::xgb.train(
                                    params   = list(
                                      objective        = "reg:squarederror",
-                                     eta              = 0.1,
+                                     eta              = 0.3,
                                      max_depth        = 6,
-                                     subsample        = 0.8,
-                                     colsample_bytree = 0.8
+                                     subsample        = 1,
+                                     colsample_bytree = 1
                                    ),
                                    data    = train.df,
                                    nrounds = 1000,
@@ -311,7 +311,7 @@ parallel_prediction <- function(base.map.dir, models, cov.vecs, non.na.inds, out
     model <- models[[i]]
     d <- NULL
     output <- foreach::foreach(d=itertools::isplitRows(cov.vecs, chunks=cores),
-                               .packages=c("stats", "randomForest")) %dopar% {
+                               .packages=c("stats", "randomForest", "xgboost")) %dopar% {
                                  stats::predict(model, d)
                                } %>% unlist
     # export to geotiff map.
@@ -380,7 +380,7 @@ downscale_main <- function(settings, analysis, covariates.dir, time, variable, o
                                  covariates.dir = covariates.dir, 
                                  variable = variable)
   # remove NAs from the training data set.
-  full_data <- full_data[complete_cases(full_data),]
+  full_data <- full_data[complete.cases(full_data),]
   # convert LC into factor.
   if ("LC" %in% colnames(full_data)) {
     full_data[,"LC"] <- factor(full_data[,"LC"])
@@ -399,6 +399,11 @@ downscale_main <- function(settings, analysis, covariates.dir, time, variable, o
   # convert LC into factor.
   if ("LC" %in% colnames(cov.df$df)) {
     cov.df$df[,"LC"] <- factor(cov.df$df[,"LC"])
+  }
+  # format the prediction covariates for xgboost.
+  if (method == "xgboost") {
+    formula <- stats::as.formula(paste0("~ ", paste(colnames(cov.df$df), collapse = " + "), " - 1"))
+    cov.df$df  <- stats::model.matrix(formula, data = cov.df$df)
   }
   # parallel prediction.
   PEcAn.logger::logger.info("Parallel prediction.")
