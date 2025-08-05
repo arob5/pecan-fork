@@ -1,9 +1,3 @@
-library(testthat)
-library(terra)
-library(sf)
-library(withr) # Add withr
-
-
 # helper to create a small test raster
 make_raster <- function(outfile, crs = "EPSG:4326") {
   r <- terra::rast(matrix(1:16, 4, 4),
@@ -15,8 +9,8 @@ make_raster <- function(outfile, crs = "EPSG:4326") {
 }
 
 test_that("clip & mask works: output clipped to polygon bbox and masked", {
-  in_r <- local_tempfile(fileext = ".tif")
-  out_f <- local_tempfile(fileext = ".tif")
+  in_r <- withr::local_tempfile(fileext = ".tif")
+  out_f <- withr::local_tempfile(fileext = ".tif")
 
   make_raster(outfile = in_r)
 
@@ -40,7 +34,7 @@ test_that("clip & mask works: output clipped to polygon bbox and masked", {
 })
 
 test_that("clip without mask retains all values within bbox", {
-  in_r <- local_tempfile(fileext = ".tif")
+  in_r <- withr::local_tempfile(fileext = ".tif")
   make_raster(outfile = in_r)
 
   poly <- sf::st_as_sf(
@@ -48,7 +42,7 @@ test_that("clip without mask retains all values within bbox", {
       sf::st_bbox(c(xmin = 1, ymin = 1, xmax = 3, ymax = 3), crs = sf::st_crs(4326))
     )
   )
-  out_f <- local_tempfile(fileext = ".tif")
+  out_f <- withr::local_tempfile(fileext = ".tif")
 
   clip_and_move_raster_file(in_r, poly, out_f, mask = FALSE)
   r_out <- terra::rast(out_f)
@@ -56,7 +50,7 @@ test_that("clip without mask retains all values within bbox", {
 })
 
 test_that("preserves CRS and filetype", {
-  in_r_path <- local_tempfile(fileext = ".tif")
+  in_r_path <- withr::local_tempfile(fileext = ".tif")
   make_raster(outfile = in_r_path, crs = "EPSG:3857")
 
   spatvect_raster <- terra::rast(in_r_path)
@@ -66,7 +60,7 @@ test_that("preserves CRS and filetype", {
       sf::st_bbox(c(xmin = 1, ymin = 1, xmax = 3, ymax = 3), crs = sf::st_crs(3857))
     )
   )
-  out_f_path <- local_tempfile(fileext = ".tif")
+  out_f_path <- withr::local_tempfile(fileext = ".tif")
 
   clip_and_move_raster_file(input_path = in_r_path, polygon = poly, out_path = out_f_path)
   r_out <- terra::rast(out_f_path)

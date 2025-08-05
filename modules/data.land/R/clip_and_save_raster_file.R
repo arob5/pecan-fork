@@ -1,4 +1,4 @@
-#' Clip and Move a Raster File
+#' Clip and Save a Raster File
 #'
 #' Clips a raster to a polygon bounding box, optionally masks to polygon, and saves the 
 #' output in the same format as the input.
@@ -8,10 +8,13 @@
 #'   (e.g., an `sf` object, a `SpatVector`, or a file path to a vector dataset).
 #'   used for clipping and masking. Must have a valid CRS.
 #' @param out_path Character. Path to save the processed raster.
+#' @param mask Logical: Should pixels outside the polygon but inside its bounding box
+#'   be masked out (TRUE) or included (FALSE)?
+#' @param overwrite Logical: Replace output file if it already exists?
 #' @return Invisibly, the clipped `SpatRaster` object. The raster is also saved to `out_path`.
 #' @export
 #' @author David LeBauer
-clip_and_move_raster_file <- function(input_path, polygon, out_path, mask = TRUE, overwrite = TRUE) {
+clip_and_save_raster_file <- function(input_path, polygon, out_path, mask = TRUE, overwrite = TRUE) {
 
   # Check that input and output files have same extension
   # This function is not designed to convert between raster formats
@@ -50,5 +53,6 @@ clip_and_move_raster_file <- function(input_path, polygon, out_path, mask = TRUE
     filename = out_path, 
     overwrite = overwrite
   )
+
   invisible(rast_to_write)
 }
