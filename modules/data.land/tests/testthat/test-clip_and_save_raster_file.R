@@ -19,7 +19,7 @@ test_that("clip & mask works: output clipped to polygon bbox and masked", {
     crs = "EPSG:4326"
   )
 
-  clip_and_move_raster_file(input_path = in_r, polygon = poly, out_path = out_f, mask = TRUE)
+  clip_and_save_raster_file(input_path = in_r, polygon = poly, out_path = out_f, mask = TRUE)
 
   expect_true(file.exists(out_f))
 
@@ -44,7 +44,7 @@ test_that("clip without mask retains all values within bbox", {
   )
   out_f <- withr::local_tempfile(fileext = ".tif")
 
-  clip_and_move_raster_file(in_r, poly, out_f, mask = FALSE)
+  clip_and_save_raster_file(in_r, poly, out_f, mask = FALSE)
   r_out <- terra::rast(out_f)
   expect_false(any(is.na(terra::values(r_out))))
 })
@@ -62,7 +62,7 @@ test_that("preserves CRS and filetype", {
   )
   out_f_path <- withr::local_tempfile(fileext = ".tif")
 
-  clip_and_move_raster_file(input_path = in_r_path, polygon = poly, out_path = out_f_path)
+  clip_and_save_raster_file(input_path = in_r_path, polygon = poly, out_path = out_f_path)
   r_out <- terra::rast(out_f_path)
 
   expect_equal(

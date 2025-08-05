@@ -1,6 +1,6 @@
 # Unreleased
 
-* Add function `clip_and_move_raster()`.
+* Add function `clip_and_save_raster_file()` for subsetting rasters to match a polygon of interest (#3537).
 
 
 # PEcAn.data.land 1.8.2

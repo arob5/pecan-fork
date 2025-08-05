@@ -9,7 +9,8 @@ section for the next release.
 
 ### Added
 
-* Add `clip_and_move_raster()` function to PEcAn.data.land
+* Add function `clip_and_save_raster_file()` for subsetting rasters to match a polygon of interest (#3537).
+
 
 ## [1.9.0] - 2025-05-25
 
