@@ -247,7 +247,7 @@ logger.getLevelNumber <- function(level) {
 ##' `logger.getLevel()` is not required to restore the level after a 
 ##' temporary change.
 ##'
-##' @return level the level of the message, one of 
+##' @return A string giving the lowest message level that will be reported, one of 
 ##' "ALL", "DEBUG", "INFO", "WARN", "ERROR", "SEVERE", or "OFF".
 ##' @export
 ##' @author Rob Kooper
