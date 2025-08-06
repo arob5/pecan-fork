@@ -4,12 +4,12 @@
 .utils.logger$stderr <- TRUE
 .utils.logger$quit <- FALSE
 .utils.logger$level <- 0
-.utils.logger$width <- ifelse(getOption("width") < 10, 
-                              getOption("width"), 
+.utils.logger$width <- ifelse(getOption("width") < 10,
+                              getOption("width"),
                               getOption("width") - 5)
 
 ##' Prints a debug message.
-##' 
+##'
 ##' This function will print a debug message.
 ##'
 ##' @param msg the message that should be printed.
@@ -26,7 +26,7 @@ logger.debug <- function(msg, ...) {
 
 
 ##' Prints an informational message.
-##' 
+##'
 ##' This function will print an informational message.
 ##'
 ##' @param msg the message that should be printed.
@@ -43,7 +43,7 @@ logger.info <- function(msg, ...) {
 
 
 ##' Prints a warning message.
-##' 
+##'
 ##' This function will print a warning message.
 ##'
 ##' @param msg the message that should be printed.
@@ -60,7 +60,7 @@ logger.warn <- function(msg, ...) {
 
 
 ##' Prints an error message.
-##' 
+##'
 ##' This function will print an error message.
 ##'
 ##' @param msg the message that should be printed.
@@ -76,11 +76,11 @@ logger.error <- function(msg, ...) {
 } # logger.error
 
 
-##' Prints an severe message and stops execution.
-##' 
+##' Prints a severe message and stops execution.
+##'
 ##' This function will print a message and stop execution of the code. This
 ##' should only be used if the application should terminate.
-##' 
+##'
 ##' set \code{\link{logger.setQuitOnSevere}(FALSE)} to avoid terminating
 ##' the session. This is set by default to TRUE if interactive or running
 ##' inside Rstudio.
@@ -96,13 +96,13 @@ logger.error <- function(msg, ...) {
 ##' }
 logger.severe <- function(msg, ..., wrap = TRUE) {
   logger.message("SEVERE", msg, ...)
-  
+
   # run option
   error <- getOption("error")
   if (!is.null(error)) {
     eval(error)
   }
-  
+
   # quit if not interactive, otherwise use stop
   if (.utils.logger$quit) {
     quit(save = "no", status = 1)
@@ -113,11 +113,13 @@ logger.severe <- function(msg, ..., wrap = TRUE) {
 
 
 ##' Prints a message at a certain log level.
-##' 
-##' This function will print a message. This is the function that is responsible for
-##' the actual printing of the message.
 ##'
-##' This is a place holder and will be later filled in with a more complex logging set
+##' This function will print a message. This is the function that is responsible
+##' for the actual printing of the message.
+##'
+##' This is a place holder and will be later filled in with a more complex
+##' logging set
+##'
 ##' @param level the level of the message (DEBUG, INFO, WARN, ERROR)
 ##' @param msg the message that should be printed.
 ##' @param ... any additional text that should be printed.
@@ -138,24 +140,28 @@ logger.message <- function(level, msg, ..., wrap = TRUE) {
     if (length(func) == 0) {
       func <- "console"
     }
-    
+
     stamp.text <- sprintf("%s %-6s [%s] :", Sys.time(), level, func)
-    long.msg <- stringi::stri_trans_general(paste(c(msg, ...), collapse = " "), "latin-ascii")
+    args <- sapply(list(...), FUN = toString)
+    long.msg <- stringi::stri_trans_general(
+      paste(c(msg, args), collapse = " "),
+      "latin-ascii"
+    )
     if (nchar(long.msg) > 20 && wrap) {
-      new.msg <- paste("\n", strwrap(long.msg, width = .utils.logger$width, 
+      new.msg <- paste("\n", strwrap(long.msg, width = .utils.logger$width,
                                      indent = 2, exdent = 2), collapse = " ")
     } else {
       new.msg <- long.msg
     }
     text <- paste(stamp.text, new.msg, "\n")
-    
+
     if (.utils.logger$console) {
       if (.utils.logger$stderr) {
         cat(text, file = stderr())
       } else {
         cat(text, file = stdout())
       }
-      
+
     }
     if (!is.na(.utils.logger$filename)) {
       cat(text, file = .utils.logger$filename, append = TRUE)
@@ -165,7 +171,7 @@ logger.message <- function(level, msg, ..., wrap = TRUE) {
 
 
 ##' Configure logging level.
-##' 
+##'
 ##' This will configure the logger level. This allows to turn DEBUG, INFO,
 ##' WARN and ERROR messages on and off.
 ##'
@@ -181,6 +187,7 @@ logger.message <- function(level, msg, ..., wrap = TRUE) {
 logger.setLevel <- function(level) {
   original_level <- logger.getLevel()
   .utils.logger$level <- logger.getLevelNumber(level)
+
   invisible(original_level)
 } # logger.setLevel
 
@@ -217,7 +224,7 @@ logger.getLevelNumber <- function(level) {
 
 
 ##' Get configured logging level.
-##' 
+##'
 ##' This will return the current level configured of the logging messages
 ##'
 ##' @return level the level of the message (ALL, DEBUG, INFO, WARN, ERROR, OFF)

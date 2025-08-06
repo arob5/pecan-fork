@@ -2,7 +2,7 @@
 % Please edit documentation in R/logger.R
 \name{logger.severe}
 \alias{logger.severe}
-\title{Prints an severe message and stops execution.}
+\title{Prints a severe message and stops execution.}
 \usage{
 logger.severe(msg, ..., wrap = TRUE)
 }
