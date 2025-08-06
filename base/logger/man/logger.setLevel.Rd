@@ -8,9 +8,7 @@ logger.setLevel(level)
 }
 \arguments{
 \item{level}{the level of the message. One of "ALL", "DEBUG", "INFO", "WARN",
-"ERROR", "SEVERE", or "OFF".
-Use "SEVERE" instead of "ERROR" for fatal errors. If \code{logger.setQuitOnSevere(TRUE)},
-These will the program to stop (default is FALSE).}
+"ERROR", "SEVERE", or "OFF".}
 }
 \value{
 When logger level is set, the previous level is returned invisibly.
@@ -19,6 +17,12 @@ This can be passed to \code{logger.setLevel()} to restore the previous level.
 \description{
 This will configure the logger level. This allows to turn DEBUG, INFO,
 WARN, ERROR, and SEVERE messages on and off.
+}
+\details{
+Note that this controls \emph{printing} of messages and does not change other behavior.
+In particular, suppressing SEVERE by setting the level to "OFF" does not prevent
+logger.severe() from signaling an error (and terminating the program if
+\code{logger.setQuitOnSevere(TRUE)}).
 }
 \examples{
 \dontrun{

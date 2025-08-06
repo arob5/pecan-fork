@@ -21,8 +21,7 @@ should only be used if the application should terminate.
 }
 \details{
 Set \code{\link{logger.setQuitOnSevere}(FALSE)} to avoid terminating
-the session. This is set by default to TRUE if interactive or running
-inside Rstudio.
+the session. The default is to not quit if running interactively.
 }
 \examples{
 \dontrun{

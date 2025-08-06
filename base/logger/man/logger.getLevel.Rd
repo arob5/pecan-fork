@@ -7,7 +7,7 @@
 logger.getLevel()
 }
 \value{
-level the level of the message, one of
+A string giving the lowest message level that will be reported, one of
 "ALL", "DEBUG", "INFO", "WARN", "ERROR", "SEVERE", or "OFF".
 }
 \description{
