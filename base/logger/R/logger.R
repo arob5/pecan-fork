@@ -214,6 +214,7 @@ logger.setLevel <- function(level) {
 ##
 ## SEVERE is treated as more serious than ERROR,
 ## and will terminate the session if `logger.setQuitOnSevere(TRUE)`
+## or call stop() otherwise
 ##
 ## @return level the level of the message
 ## @author Rob Kooper
