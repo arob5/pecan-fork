@@ -174,6 +174,11 @@ logger.message <- function(level, msg, ..., wrap = TRUE) {
 ##' This will configure the logger level. This allows to turn DEBUG, INFO,
 ##' WARN, ERROR, and SEVERE messages on and off.
 ##'
+##' Note that this controls _printing_ of messages and does not change other behavior.
+##' In particular, suppressing SEVERE by setting the level to "OFF" does not prevent
+##' logger.severe() from signaling an error (and terminating the program if 
+##' `logger.setQuitOnSevere(TRUE)`).
+##'
 ##' @param level the level of the message. One of "ALL", "DEBUG", "INFO", "WARN",
 ##' "ERROR", "SEVERE", or "OFF".
 ##' Use "SEVERE" instead of "ERROR" for fatal errors. If `logger.setQuitOnSevere(TRUE)`,
