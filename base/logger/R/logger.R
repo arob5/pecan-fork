@@ -181,8 +181,6 @@ logger.message <- function(level, msg, ..., wrap = TRUE) {
 ##'
 ##' @param level the level of the message. One of "ALL", "DEBUG", "INFO", "WARN",
 ##' "ERROR", "SEVERE", or "OFF".
-##' Use "SEVERE" instead of "ERROR" for fatal errors. If `logger.setQuitOnSevere(TRUE)`,
-##' These will the program to stop (default is FALSE). 
 ##'
 ##' @export
 ##' @return When logger level is set, the previous level is returned invisibly.
