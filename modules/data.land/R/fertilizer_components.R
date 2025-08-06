@@ -43,8 +43,6 @@
 #' look_up_fertilizer_components("dairy_fr", 500)
 #' look_up_fertilizer_components("manure", 1000, fraction_organic_n = 0.02, fraction_organic_c = 0.08)
 #'
-#' @import dplyr
-#' @import tidyverse
 #' @export
 look_up_fertilizer_components <- function(
   type, 
