@@ -9,6 +9,7 @@
 #' To get a Copernicus CDS API key, register at \url{https://cds.climate.copernicus.eu/profile}.
 #' You must provide both \code{user} (UID) and \code{key} parameters from your CDS profile.
 #'
+#' You can check the "CC-BY" license under the \href{https://cds.climate.copernicus.eu/profile?tab=licences}{licenses tab of your profile page}.
 #' @param outfolder Character. Directory where downloaded NetCDF files will be saved.
 #' @param start_date character: the start date of the data to be downloaded. Format is YYYY-MM-DD (will only use the year part of the date)
 #' @param end_date character: the end date of the data to be downloaded. Format is YYYY-MM-DD (will only use the year part of the date)
@@ -28,15 +29,16 @@
 #'   \item{startdate}{Start date and time of the data in the file.}
 #'   \item{enddate}{End date and time of the data in the file.}
 #'   \item{mimetype}{MIME type of the file ("application/x-netcdf").}
-#'   \item{formatname}{Format name ("ERA5_year.nc" or "ERA5.rea_year.nc").}
+#'   \item{formatname}{Format name ("ERA5_year.nc").}
 #'
 #' @examples
 #' \dontrun{
-#' # Download ERA5 reanalysis data for 2020-2021
+#' # Download ERA5 reanalysis data for 2020
+#' output_dir <- withr::local_tempdir()
 #' era5_files <- download.ERA5_cds(
-#'   outfolder = "~/output/era5_data",
+#'   outfolder = output_dir,
 #'   start_date = "2020-01-01",
-#'   end_date = "2021-12-31",
+#'   end_date = "2020-06-30",
 #'   extent = c(-72.2215, -72.1215, 42.4878, 42.5878),
 #'   variables = c("2m_temperature", "surface_pressure"),
 #'   product_type = "reanalysis",
@@ -46,10 +48,10 @@
 #' 
 #' # Download ensemble data for specificed hours only
 #' era5_files <- download.ERA5_cds(
-#'   outfolder = "~/output/era5_data",
+#'   outfolder = output_dir,
 #'   start_date = "2020-01-01",
 #'   end_date = "2020-12-31",
-#'   extent = c(-84.0, -82.0, 42.0, 44.0),
+#'   extent = c(-83.05, -82.95, 42.95, 43.05),
 #'   variables = "surface_solar_radiation_downwards",
 #'   time = c("00:00", "12:00"),
 #'   user = "your_cds_user_id",
@@ -59,7 +61,7 @@
 #' @export
 #' 
 #' @importFrom purrr %>%
-#' @author Dongchen Zhang
+#' @author Dongchen Zhang, Akash
 
 download.ERA5_cds <- function(outfolder, start_date, end_date, 
                               extent, variables, time = NULL, dataset = "reanalysis-era5-single-levels",
@@ -104,12 +106,11 @@ download.ERA5_cds <- function(outfolder, start_date, end_date,
     )
   }
   ecmwfr::wf_set_key(user = user, key = key)
-  
-  file_prefix <- if (product_type == "reanalysis") "ERA5.rea_" else "ERA5_"
+
   # loop over years.
   nc.paths <- c()
   for (y in years) {
-    fname <- file.path(outfolder, paste0(file_prefix, y, ".nc"))
+    fname <- file.path(outfolder, paste0("ERA5_", y, ".nc"))
 
     request <- list(
       dataset_short_name = dataset,
@@ -150,7 +151,7 @@ download.ERA5_cds <- function(outfolder, start_date, end_date,
                          startdate = paste0(paste(years[i], months[1], days[1], sep = "-"), " ", times[1], ":00"),
                          enddate = paste0(paste(years[i], months[length(months)], days[length(days)], sep = "-"), " ", times[length(times)], ":00"),
                          mimetype = "application/x-netcdf",
-                         formatname = paste0(file_prefix, "year.nc"))
+                         formatname = "ERA5_year.nc")
   }
   return(results)
 }
