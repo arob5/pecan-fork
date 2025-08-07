@@ -16,6 +16,9 @@ For more information about this file see also [Keep a Changelog](http://keepacha
 - Added automated pkgdown documentation for all PEcAn packages (@divine7022, #3482): 
   - Compiled pages are live at https://pecanproject.github.io/package-documentation and inside Docker at `pecan.localhost/pkgdocs/`, and these are automatically updated each time a PR to the source packages is merged.
   - You can compile all pkgdown pages locally at any time with `make pkgdocs`.
+- The ERA5 NC extraction function can now handle multi-site instead of one.
+- Added function for merging images from the same tiling system (MODIS, GLANCE, ICESat-2, HLS, etc.).
+- Added function for converting images towards the GDAL-supported formats (H5, NetCDF, HDF4, GeoTIFF, etc .).
 
 ### Fixed
 - api to correctly use x_var from request in plotResults #3528
@@ -73,8 +76,9 @@ For more information about this file see also [Keep a Changelog](http://keepacha
 - Added GEDI AGB preparation workflow.
 - Added new feature of downloading datasets from the NASA DAAC ORNL database.
 - Extended downscale function and created 'downscale_hrly' so that it handles more frequent data
-- Added 'aggregate' as a new feature for downscaled data
+- Added 'aggregate' as a new feature for downscaled data.
 - Added ERA5 download function that applies to the new CDS API.
+- Added downscale functions and scripts that apply to the North America SDA run.
 
 ### Fixed
 
