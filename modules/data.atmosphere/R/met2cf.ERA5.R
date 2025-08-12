@@ -63,7 +63,7 @@ met2CF.ERA5<- function(lat,
         # detect timestep dynamically
         time_diffs <- diff(as.numeric(zoo::index(ens)))
         if (length(time_diffs) > 0) {
-          timestep_seconds <- as.numeric(median(time_diffs))
+          timestep_seconds <- as.numeric(stats::median(time_diffs))
         } else {
           timestep_seconds <- 3 * 3600 # fallback to 3-hourly
           if (verbose) PEcAn.logger::logger.info("Only one timestamp found. Defaulting to 3-hour timestep for conversion.")
