@@ -94,6 +94,7 @@ get.vpd <- function(rh, temp) {
 #' Allen et al. (1998) FAO-56.
 #' Goff & Gratch (1946) Trans. ASHVE 52:95–122.
 #'
+#' @author David LeBauer
 #' @export
 sat_vapor_pressure <- function(
     temp,
@@ -135,7 +136,10 @@ sat_vapor_pressure <- function(
     return(units::ud_convert(es_hPa, "hPa", out_units))
   }
 
-  PEcAn.logger::logger.severe("Unhandled method: ", method)
+  PEcAn.logger::logger.severe(
+    method,
+    "for converting temperature to saturated vapor pressure not supported"
+  )
 }
 
 # ---- Aliases for backward-compatibility ----
