@@ -41,9 +41,9 @@
 #'   end_date = "2020-06-30",
 #'   extent = c(-72.2215, -72.1215, 42.4878, 42.5878),
 #'   variables = c("2m_temperature", "surface_pressure"),
-#'   product_type = "reanalysis",
 #'   user = "your_cds_user_id",
-#'   key = "your_cds_api_key"
+#'   key = "your_cds_api_key",
+#'   product_type = "reanalysis"
 #' )
 #' 
 #' # Download ensemble data for specificed hours only
@@ -53,9 +53,9 @@
 #'   end_date = "2020-12-31",
 #'   extent = c(-83.05, -82.95, 42.95, 43.05),
 #'   variables = "surface_solar_radiation_downwards",
-#'   time = c("00:00", "12:00"),
 #'   user = "your_cds_user_id",
-#'   key = "your_cds_api_key"
+#'   key = "your_cds_api_key",
+#'   time = c("00:00", "12:00")
 #' )
 #' }
 #' @export
