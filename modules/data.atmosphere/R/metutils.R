@@ -108,7 +108,7 @@ sat_vapor_pressure <- function(
     temp,
     temp_units = "degC",
     out_units = "kPa",
-    method = c("ClausiusClapeyron")) {
+    method = "ClausiusClapeyron") {
   method <- match.arg(method)
   # normalize common alias
   if (tolower(out_units) == "mb") out_units <- "hPa"
@@ -156,16 +156,6 @@ get.es <- function(temp) {
     temp_units = "degC",
     out_units = "hPa"
   )
-}
-
-#' @rdname sat_vapor_pressure
-#' @md
-#' @details
-#' Alias for temperature→e_s convenience. Identical to `sat_vapor_pressure()`.
-#' @param temp see `sat_vapor_pressure()`
-#' @export
-t2es <- function(temp, ...) {
-  sat_vapor_pressure(temp = temp, ...)
 }
 
 ##' Calculate RH from temperature and dewpoint

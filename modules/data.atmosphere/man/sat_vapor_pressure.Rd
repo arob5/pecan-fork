@@ -10,15 +10,13 @@ sat_vapor_pressure(
   temp,
   temp_units = "degC",
   out_units = "kPa",
-  method = c("ClausiusClapeyron")
+  method = "ClausiusClapeyron"
 )
 
 get.es(temp)
-
-t2es(temp, ...)
 }
 \arguments{
-\item{temp}{see \code{sat_vapor_pressure()}}
+\item{temp}{numeric vector of temperatures}
 
 \item{temp_units}{input temperature units ("degC","K","degF"), default "degC"}
 
@@ -32,9 +30,6 @@ numeric vector in \code{out_units}
 }
 \description{
 Saturation vapor pressure (t2es)
-}
-\details{
-Alias for temperature→e_s convenience. Identical to \code{sat_vapor_pressure()}.
 }
 \references{
 Alduchov, O. A., & Eskridge, R. E. (1996). Improved Magnus Form Approximation of Saturation Vapor Pressure. J. Appl. Meteor.*, 35(4), 601–609. <doi:10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2>
