@@ -12,40 +12,40 @@ searchPosteriors <- function(req, pft_id = NA, host_id = NA, offset = 0, limit =
     res$status <- 400
     return(list(error = "limit parameter must be 10, 20, 50, 100, or 500"))
   }
-  
+
   posteriors <- tbl(global_db_pool, "posteriors") %>%
     select(everything())
-  
+
   posteriors <- tbl(global_db_pool, "dbfiles") %>%
     select(file_name, file_path, container_type, id = container_id, machine_id) %>%
     inner_join(posteriors, by = "id") %>%
     filter(container_type == "Posterior") %>%
     select(-container_type)
-  
+
   posteriors <- tbl(global_db_pool, "machines") %>%
     select(hostname, machine_id = id) %>%
     inner_join(posteriors, by = "machine_id")
-  
+
   posteriors <- tbl(global_db_pool, "pfts") %>%
     select(pft_name = name, pft_id = id) %>%
     inner_join(posteriors, by = "pft_id")
-  
+
   if (!is.na(pft_id)) {
     posteriors <- posteriors %>%
       filter(pft_id == !!pft_id)
   }
-  
+
   if (!is.na(host_id)) {
     posteriors <- posteriors %>%
       filter(machine_id == !!host_id)
   }
-  
+
   qry_res <- posteriors %>%
     select(-pft_id, -machine_id) %>%
     distinct() %>%
     arrange(id) %>%
     collect()
-  
+
   if (nrow(qry_res) == 0 || as.numeric(offset) >= nrow(qry_res)) {
     res$status <- 404
     return(list(error = "Posterior(s) not found"))
@@ -58,9 +58,9 @@ searchPosteriors <- function(req, pft_id = NA, host_id = NA, offset = 0, limit =
     if (as.numeric(offset) != 0) {
       has_prev <- TRUE
     }
-    
+
     qry_res <- qry_res[(as.numeric(offset) + 1):min((as.numeric(offset) + as.numeric(limit)), nrow(qry_res)), ]
-    
+
     result <- list(posteriors = qry_res)
     result$count <- nrow(qry_res)
     if (has_next) {
@@ -101,7 +101,7 @@ searchPosteriors <- function(req, pft_id = NA, host_id = NA, offset = 0, limit =
         limit
       )
     }
-    
+
     return(result)
   }
 }
@@ -118,10 +118,10 @@ searchPosteriors <- function(req, pft_id = NA, host_id = NA, offset = 0, limit =
 #* @get /<posterior_id>
 downloadPosterior <- function(posterior_id, filename = "", req, res) {
   db_hostid <- PEcAn.DB::dbHostInfo(global_db_pool)$hostid
-  
+
   # This is just for temporary testing due to the existing issue in dbHostInfo()
   db_hostid <- ifelse(db_hostid == 99, 99000000001, db_hostid)
-  
+
   posterior <- tbl(global_db_pool, "dbfiles") %>%
     select(file_name, file_path, container_id, machine_id, container_type) %>%
     filter(machine_id == !!db_hostid) %>%
