@@ -1003,7 +1003,7 @@ paths:
       parameters:
         - in: query
           name: pft_id
-          description: If provided, returns all posteriors for the provided model_id
+          description: If provided, returns all posteriors for the provided pft_id
           required: false
           schema:
             type: string

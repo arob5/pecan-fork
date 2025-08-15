@@ -10,7 +10,7 @@ library(dplyr)
 searchPosteriors <- function(req, pft_id = NA, host_id = NA, offset = 0, limit = 50, res) {
   if (!limit %in% c(10, 20, 50, 100, 500)) {
     res$status <- 400
-    return(list(error = "Invalid value for parameter"))
+    return(list(error = "limit parameter must be 10, 20, 50, 100, or 500"))
   }
   
   posteriors <- tbl(global_db_pool, "posteriors") %>%
