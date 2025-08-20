@@ -47,7 +47,7 @@ status <- suppressWarnings(
 
 if(status == 1){
     # 1 is expected for `sipnet -h`
-    PEcAn.logger::logger.info("`sipnet -h`works!")
+    PEcAn.logger::logger.info("SIPNET has been installed!")
 } else {
-    PEcAn.logger::logger.error("`sipnet -h` failed with status:", status)
+    PEcAn.logger::logger.error("SIPNET installation has failed with status:", status)
 }
