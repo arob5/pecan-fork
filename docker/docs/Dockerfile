@@ -37,7 +37,7 @@ COPY scripts/build_pkgdown.R /pkgdoc/scripts/build_pkgdown.R
 COPY base /pkgdoc/base/
 COPY modules /pkgdoc/modules/
 COPY models /pkgdoc/models/
-RUN make clean && make pkgdocs 
+RUN make clean && make pkgdocs
 
 # ----------------------------------------------------------------------
 # copy html pages to container
