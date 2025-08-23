@@ -12,6 +12,7 @@ output_dir <- "_pkgdown_docs"
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
+
 if (requireNamespace("PEcAn.logger", quietly = TRUE)) {
   logger <- PEcAn.logger::logger.info
 } else {
@@ -21,6 +22,9 @@ if (requireNamespace("PEcAn.logger", quietly = TRUE)) {
 }
 
 logger("Building pkgdown docs for:", paste(packages, collapse = ", "))
+
+# Define branch variable once for all packages
+branch <- Sys.getenv("PECAN_GIT_BRANCH", unset = "develop")
 for (pkg in packages) {
   logger("Building pkgdown site for:", pkg)
   current_wd <- getwd()  
@@ -34,7 +38,8 @@ for (pkg in packages) {
       override = list(
         repo = list(
           url = list(
-            source = paste0("https://github.com/PecanProject/pecan/blob/develop/", pkg)
+            source = paste0("https://github.com/PecanProject/pecan/blob/", 
+                            branch, "/", pkg)
           )
         ),
         template = list(
@@ -91,7 +96,7 @@ before_text <- c(
   '<body>',
   '<h1>PEcAn package documentation</h1>',
   '<p>Function documentation and articles for each PEcAn package,',
-  '   generated from the package source using <a href="https://pkgdown.r-lib.org/" target="_blank">pkgdown</a>.</p>',
+  '   generated from the package source using <a href="https://pkgdown.r-lib.org/">pkgdown</a>.</p>',
   '',
   '<ul>'
 )
