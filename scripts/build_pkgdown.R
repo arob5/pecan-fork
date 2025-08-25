@@ -39,7 +39,7 @@ for (pkg in packages) {
         repo = list(
           url = list(
             source = paste0("https://github.com/PecanProject/pecan/blob/", 
-                            branch, "/", pkg)
+                            branch, "/", pkg, "/")
           )
         ),
         template = list(
