@@ -3,14 +3,16 @@ Distribution <- R6Class(
   classname = "Distribution",
   public = list(
     shape = NULL, # Shape of a single draw from this distribution
+    rv_name = NULL,
+    rv_scalar_names = NULL,
     
-    initialize = function(shape, name=NULL, scalar_names=NULL) {
+    initialize = function(shape, rv_name=NULL, rv_scalar_names=NULL) {
       if (class(self)[1] == "Distribution") {
         stop("Distribution is an abstract class and cannot be instantiated directly.")
       }
       self$shape <- shape
-      self$name <- name
-      self$scalar_names <- scalar_names # TODO: write setter for this to handle shape/validation
+      self$rv_name <- rv_name
+      self$rv_scalar_names <- rv_scalar_names # TODO: write setter for this to handle shape/validation
     },
     
     length = function() {
@@ -20,7 +22,90 @@ Distribution <- R6Class(
     n_dims = function() {
       length(self$shape)
     },
+    
+    input_is_array = function(x) {
+      if(!(is.vector(x) || is.array(x))) return(FALSE)
+      
+      shape_x <- dim(x)
+      n_dims_x <- length(shape_x)
+      
+      # Single value in array format.
+      if((n_dims_x == self$n_dims) && all(shape_x == self$shape)) return(TRUE)
+      
+      # Multiple values in array format.
+      if((n_dims_x == self$n_dims+1) && all(shape_x[-1] == self$shape)) return(TRUE)
+      
+      return(FALSE)
+    },
+    
+    input_is_flat = function(x) {
+      if(!(is.vector(x) || is.array(x))) return(FALSE)
+      
+      shape_x <- dim(x)
+      n_dims_x <- length(shape_x)
+      len_x <- prod(shape_x)
+      
+      # Single value in flat format.
+      if(is.vector(x) && (len_x == self$length())) return(TRUE)
+      
+      # Multiple values in flat format.
+      if(is.matrix(x) && (ncol(x) == self$length())) return(TRUE)
+      
+      return(FALSE)
+    },
+    
+    transform_to_array = function(x) {
+      # In: input in array or flattened format.
+      # Out: input in array format.
+      
+      if(self$input_is_array(x)) x
+      else if(self$input_is_flat(x)) private$.from_flat(x)
+      else {
+        stop("Input `x` is not in valid array or flattened format.")
+      }
+    },
+    
+    transform_to_flat = function(x) {
+      # In: input in array or flattened format.
+      # Out: input in flattened format.
+      
+      if(self$input_is_flat(x)) x
+      else if(self$input_is_array(x)) private$.to_flat(x)
+      else {
+        stop("Input `x` is not in valid array or flattened format.")
+      }
+    },
 
+    #' Evaluate log-density on a batch of points
+    #' @param x n input points (in flattened or array format)
+    #' @return numeric vector of length n
+    log_density = function(x) {
+      x <- self$transform_to_array(x)
+      private$.log_density(x)
+    },
+    
+    #' Generate samples
+    #' @param n number of samples
+    #' @return n samples in array or flattened format.
+    sample = function(n=1L, flatten=FALSE) {
+      x_arr <- private$.sample(n=n)
+      
+      if(flatten) self$transform_to_flat(x_arr)
+      else x_arr
+    }, 
+    
+    print = function() {
+      cat("Distribution: ", class(self)[1], "\n")
+      cat("Shape ", self$shape, " | Length ", self$length())
+    }, 
+    
+    validate_dist_params = function(...) {
+      stop("validate_dist_params() must be implemented by subclasses.")
+    }
+  ), 
+  
+  private = list(
+    
     #' Convert flattened input to distribution shape.
     #' 
     #' The input `x` is required to be a vector with length equal to 
@@ -33,15 +118,13 @@ Distribution <- R6Class(
     #' order (i.e., "C" style). In general, returns array of shape 
     #' `c(n, self$shape)`. If `simplify=TRUE` and `n=1` then squashes to 
     #' `self$shape`.
-    from_flat = function(x, simplify=TRUE) {
-      
-      if(!self$.input_is_flat(x)) {
-        stop("`from_flat(x)` requires `x` in valid flattened format.")
-      }
+    #' 
+    #' No input checking here; checking is done in public interface `transform_to_array()`.
+    .from_flat = function(x, simplify=TRUE) {
       
       # Handle single value case.
       if(is.vector(x)) x <- matrix(x, nrow=1L)
-
+      
       # R stores in column-major order (columns are contiguous in memory).
       # We thus transpose `x` so that each value becomes a column. Values
       # are assigned to array in column-major order, then permuted afterwards
@@ -64,11 +147,8 @@ Distribution <- R6Class(
     #' `self$length` vector. This method exactly reverses the steps of 
     #' `from_flat()` to ensure consistent and reproducible conversion.
     #' 
-    to_flat = function(x, simplify=TRUE) {
-      
-      if(!self$.input_is_array(x)) {
-        stop("`to_flat(x)` requires `x` in valid array format.")
-      }
+    #' No input checking here; checking is done in public interface `transform_to_flat()`.
+    .to_flat = function(x, simplify=TRUE) {
       
       # Handle the case where `x` is a single value.
       if(length(dim(x)) == self$n_dims) x <- array(x, dim=c(1L, dim(x)))
@@ -81,89 +161,6 @@ Distribution <- R6Class(
       # Optionally simplify if there is only a single value.
       if((n == 1L) && (simplify)) x[1,]
       else x
-    },
-
-    #' Evaluate log-density on a batch of points
-    #' @param x n input points (in flattened or array format)
-    #' @return numeric vector of length n
-    log_density = function(x) {
-      x <- self$.transform_to_array(x)
-      self$.log_density(x)
-    },
-    
-    #' Generate samples
-    #' @param n number of samples
-    #' @return n samples in array or flattened format.
-    sample = function(n=1L, flatten=FALSE) {
-      x_arr <- self$.sample(n=n)
-      
-      if(flatten) self$.transform_to_flat(x_arr)
-      else x_arr
-    }, 
-    
-    print = function() {
-      cat("Distribution: ", class(self)[1], "\n")
-      cat("Shape ", self$shape, " / Length ", self$length())
-    }, 
-    
-    validate_dist_params = function(...) {
-      stop("validate_dist_params() must be implemented by subclasses.")
-    }
-  ), 
-  
-  private = list(
-    
-    .input_is_array = function(x) {
-      if(!(is.vector(x) || is.array(x))) return(FALSE)
-      
-      shape_x <- dim(x)
-      n_dims_x <- length(shape_x)
-      
-      # Single value in array format.
-      if((n_dims_x == self$n_dims) && all(shape_x == self$shape)) return(TRUE)
-      
-      # Multiple values in array format.
-      if((n_dims_x == self$n_dims+1) && all(shape_x[-1] == self$shape)) return(TRUE)
-      
-      return(FALSE)
-    },
-    
-    .input_is_flat = function(x) {
-      if(!(is.vector(x) || is.array(x))) return(FALSE)
-      
-      shape_x <- dim(x)
-      n_dims_x <- length(shape_x)
-      len_x <- prod(shape_x)
-      
-      # Single value in flat format.
-      if(is.vector(x) && (len_x == self$length())) return(TRUE)
-      
-      # Multiple values in flat format.
-      if(is.matrix(x) && (ncol(x) == self$length())) return(TRUE)
-      
-      return(FALSE)
-    },
-    
-    .transform_to_array = function(x) {
-      # In: input in array or flattened format.
-      # Out: input in array format.
-      
-      if(self$.input_is_array(x)) x
-      else if(self$.input_is_flat(x)) self$from_flat(x)
-      else {
-        stop("Input `x` is not in valid array or flattened format.")
-      }
-    },
-    
-    .transform_to_flat = function(x) {
-      # In: input in array or flattened format.
-      # Out: input in flattened format.
-      
-      if(self$.input_is_flat(x)) x
-      else if(self$.input_is_array(x)) self$to_flat(x)
-      else {
-        stop("Input `x` is not in valid array or flattened format.")
-      }
     },
     
     .log_density = function(x_arr) {

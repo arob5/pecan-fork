@@ -1,14 +1,14 @@
-NormalDistribution <- R6Class(
-  classname = "NormalDistribution",
+Normal <- R6Class(
+  classname = "Normal",
   inherit = Distribution,
   
   public = list(
     mean = NULL,
     sd = NULL,
     
-    initialize = function(mean=0, sd=1, name=NULL, scalar_names=NULL) {
+    initialize = function(mean=0, sd=1, ...) {
       self$validate_dist_params(mean, sd)
-      super$initialize(shape=1L, name=name, scalar_names=scalar_names)
+      super$initialize(shape=1L, ...)
       self$mean <- mean
       self$sd <- sd
     },
@@ -27,7 +27,7 @@ NormalDistribution <- R6Class(
     
     .sample = function(n=1L) {
       matrix(rnorm(n, mean=self$mean, sd=self$sd), ncol=1L)
-    }, 
+    }
   )
 )
 

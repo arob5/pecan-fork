@@ -4,7 +4,46 @@ output: html_document
 ---
 
 ```{r}
+library(R6)
+
 base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
-source(file.path(base_dir, "base_distribution.r"))
-source(file.path(base_dir, "distributions.r"))
+code_dir <- file.path(base_dir, "R")
+dist_dir <- file.path(code_dir, "distributions")
+
+source(file.path(dist_dir, "base_distribution.r"))
+source(file.path(dist_dir, "distributions.r"))
 ```
+
+
+```{r}
+# Should throw error (add this as unit test)
+abstract_dist <- Distribution$new()
+```
+      
+```{r}
+# Univariate normal.
+x <- Normal$new()
+
+print("Samples:")
+print(x$sample())
+print(x$sample(flat=TRUE))
+print(x$sample(5))
+print(x$sample(5, flat=TRUE))
+
+print("Log Density evaluations:")
+samp_arr <- x$sample()
+samp_flat <- x$sample(flat=TRUE)
+print(x$log_density(samp_arr))
+print(x$log_density(samp_flat))
+```
+
+
+
+
+
+
+
+
+
+
+
