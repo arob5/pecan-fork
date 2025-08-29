@@ -1,0 +1,10 @@
+---
+title: "distributions"
+output: html_document
+---
+
+```{r}
+base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
+source(file.path(base_dir, "base_distribution.r"))
+source(file.path(base_dir, "distributions.r"))
+```
