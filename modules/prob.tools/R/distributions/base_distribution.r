@@ -26,14 +26,14 @@ Distribution <- R6Class(
     input_is_array = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- dim(x)
+      shape_x <- ifelse(is.vector(x), 1L, dim(x))
       n_dims_x <- length(shape_x)
-      
+
       # Single value in array format.
-      if((n_dims_x == self$n_dims) && all(shape_x == self$shape)) return(TRUE)
+      if((n_dims_x == self$n_dims()) && all(shape_x == self$shape)) return(TRUE)
       
       # Multiple values in array format.
-      if((n_dims_x == self$n_dims+1) && all(shape_x[-1] == self$shape)) return(TRUE)
+      if((n_dims_x == self$n_dims()+1) && all(shape_x[-1] == self$shape)) return(TRUE)
       
       return(FALSE)
     },
@@ -41,7 +41,7 @@ Distribution <- R6Class(
     input_is_flat = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- dim(x)
+      shape_x <- ifelse(is.vector(x), 1L, dim(x))
       n_dims_x <- length(shape_x)
       len_x <- prod(shape_x)
       
@@ -81,7 +81,7 @@ Distribution <- R6Class(
     #' @return numeric vector of length n
     log_density = function(x) {
       x <- self$transform_to_array(x)
-      private$.log_density(x)
+      drop(private$.log_density(x))
     },
     
     #' Generate samples
@@ -132,7 +132,7 @@ Distribution <- R6Class(
       # of values.
       n <- nrow(x)
       arr <- array(t(x), dim=c(self$shape, n)) # c(self$shape, n)
-      arr <- aperm(arr, c(self$n_dims + 1L, seq_along(self$shape))) # c(n, self$shape)
+      arr <- aperm(arr, c(self$n_dims() + 1L, seq_along(self$shape))) # c(n, self$shape)
       
       # Optionally simplify if there is only a single value.
       if((n == 1L) && (simplify)) array(arr, dim = dim(arr)[-1L])
@@ -151,7 +151,7 @@ Distribution <- R6Class(
     .to_flat = function(x, simplify=TRUE) {
       
       # Handle the case where `x` is a single value.
-      if(length(dim(x)) == self$n_dims) x <- array(x, dim=c(1L, dim(x)))
+      if(length(dim(x)) == self$n_dims()) x <- array(x, dim=c(1L, dim(x)))
       
       n <- dim(x)[1]
       x <- aperm(x, c(2:length(dim(x)), 1L)) # c(self$shape, n)

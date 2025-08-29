@@ -11,7 +11,7 @@ code_dir <- file.path(base_dir, "R")
 dist_dir <- file.path(code_dir, "distributions")
 
 source(file.path(dist_dir, "base_distribution.r"))
-source(file.path(dist_dir, "distributions.r"))
+source(file.path(dist_dir, "normal.r"))
 ```
 
 
