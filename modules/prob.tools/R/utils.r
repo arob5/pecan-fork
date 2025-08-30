@@ -23,3 +23,14 @@ is_upper_tri <- function(m) {
   all(m[lower.tri(m)] == 0)
 }
 
+is_distribution <- function(x) {
+  "Distribution" %in% class(x)
+}
+
+is_product_distribution <- function() {
+  "ProductDistribution" %in% class(x)
+}
+
+
+
+

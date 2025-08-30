@@ -25,6 +25,7 @@ abstract_dist <- Distribution$new()
 ```{r}
 # Univariate normal.
 x <- Normal$new()
+x$print()
 
 print("Samples:")
 print(x$sample())
@@ -45,27 +46,36 @@ d <- 3
 S <- matrix(rnorm(d*d), nrow=3, ncol=3)
 C <- tcrossprod(S)
 
-x <- MultivariateNormal$new(cov=C)
+y <- MultivariateNormal$new(cov=C)
+y$print()
 
 print("Samples:")
-print(x$sample())
-print(x$sample(flat=TRUE))
-print(x$sample(flat=TRUE, simplify=TRUE))
-print(x$sample(4))
+print(y$sample())
+print(y$sample(flat=TRUE))
+print(y$sample(flat=TRUE, simplify=TRUE))
+print(y$sample(4))
 
 print("Log Density evaluations:")
-samp_arr <- x$sample()
+samp_arr <- y$sample()
 samp_arr_simple <- drop(samp_arr)
-samp_mat <- x$sample(4)
+samp_mat <- y$sample(4)
 
-print(x$log_density(samp_arr))
-print(x$log_density(samp_arr_simple))
-print(x$log_density(samp_mat))
+print(y$log_density(samp_arr))
+print(y$log_density(samp_arr_simple))
+print(y$log_density(samp_mat))
+```
+
+```{r}
+z <- ProductDistribution$new(x)
 ```
 
 
-
-
+Things to implement when defining a new distribution:
+1. Inherit from `Distribution`.
+2. Set the `.constraint` private variable.
+3. Implement any relevant private methods for distribution functionality; most
+commonly will be `.sample()` and `.log_density()`.
+4. Implement `.validate_dist_params()` (currently this is not forced, but could be).
 
 
 

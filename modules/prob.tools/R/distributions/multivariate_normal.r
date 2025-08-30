@@ -28,6 +28,8 @@ MultivariateNormal <- R6Class(
   private = list(
     .cov = NULL,
     .chol_lower = NULL, # Lower Cholesky factor.
+    .precision = NULL, # Precision (inverse covariance) matrix.
+    .constraint = "None",
     
     .log_density = function(x) {
       
@@ -113,10 +115,19 @@ MultivariateNormal <- R6Class(
     
     cov = function(value) {
       if(missing(value)) { # Cache covariance if not previously computed.
-        if(is.null(private$.cov)) private$.cov <- tcrossprod(private$.chol_lower)
+        if(is.null(private$.cov)) private$.cov <- tcrossprod(self$chol_lower)
         return(private$.cov)
       } else {
         stop("MultivariateNormal cov/chol_lower are immutable.")
+      }
+    }, 
+    
+    precision = function(value) {
+      if(missing(value)) { # Cache precision if not previously computed.
+        if(is.null(private$.precision)) private$.precision <- chol2inv(t(self$chol_lower))
+        return(private$.precision)
+      } else {
+        stop("MultivariateNormal precision matrix cannot be set.")
       }
     }
   )

@@ -15,6 +15,8 @@ Normal <- R6Class(
   ), 
   
   private = list(
+    .constraint = "None",
+    
     .log_density = function(x_arr) {
       dnorm(x_arr, mean=self$mean, sd=self$sd, log=TRUE)
     },
