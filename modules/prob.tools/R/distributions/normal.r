@@ -7,16 +7,10 @@ Normal <- R6Class(
     sd = NULL,
     
     initialize = function(mean=0, sd=1, ...) {
-      self$validate_dist_params(mean, sd)
+      private$.validate_dist_params(mean, sd)
       super$initialize(shape=1L, ...)
       self$mean <- mean
       self$sd <- sd
-    },
-    
-    validate_dist_params = function(mean, sd) {
-      if(length(mean) != 1L) stop("`NormalDistribution` requires length 1 `mean`.")
-      if(length(sd) != 1L) stop("`NormalDistribution` requires length 1 `sd`.")
-      if(sd < 0) stop("`NormalDistribution` requires positive value for `sd`.")
     }
   ), 
   
@@ -27,6 +21,12 @@ Normal <- R6Class(
     
     .sample = function(n=1L) {
       matrix(rnorm(n, mean=self$mean, sd=self$sd), ncol=1L)
+    }, 
+    
+    .validate_dist_params = function(mean, sd) {
+      if(length(mean) != 1L) stop("`NormalDistribution` requires length 1 `mean`.")
+      if(length(sd) != 1L) stop("`NormalDistribution` requires length 1 `sd`.")
+      if(sd < 0) stop("`NormalDistribution` requires positive value for `sd`.")
     }
   )
 )

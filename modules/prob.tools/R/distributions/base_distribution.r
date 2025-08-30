@@ -26,7 +26,7 @@ Distribution <- R6Class(
     input_is_array = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- ifelse(is.vector(x), 1L, dim(x))
+      shape_x <- ifelse(is.vector(x), length(x), dim(x))
       n_dims_x <- length(shape_x)
 
       # Single value in array format.
@@ -41,7 +41,7 @@ Distribution <- R6Class(
     input_is_flat = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- ifelse(is.vector(x), 1L, dim(x))
+      shape_x <- ifelse(is.vector(x), length(x), dim(x))
       n_dims_x <- length(shape_x)
       len_x <- prod(shape_x)
       
@@ -54,24 +54,32 @@ Distribution <- R6Class(
       return(FALSE)
     },
     
-    transform_to_array = function(x) {
+    transform_to_array = function(x, simplify=FALSE) {
       # In: input in array or flattened format.
       # Out: input in array format.
+      # If `x` is already simple, then this function will not un-simplify.
       
-      if(self$input_is_array(x)) x
-      else if(self$input_is_flat(x)) private$.from_flat(x)
-      else {
+      if(self$input_is_array(x)) {
+        if(simplify) private$.simplify_array(x)
+        else x
+      } else if(self$input_is_flat(x)) {
+        private$.from_flat(x, simplify)
+      } else {
         stop("Input `x` is not in valid array or flattened format.")
       }
     },
     
-    transform_to_flat = function(x) {
+    transform_to_flat = function(x, simplify=FALSE) {
       # In: input in array or flattened format.
       # Out: input in flattened format.
+      # If `x` is already simple, then this function will not un-simplify.
       
-      if(self$input_is_flat(x)) x
-      else if(self$input_is_array(x)) private$.to_flat(x)
-      else {
+      if(self$input_is_flat(x)) {
+        if(simplify) private$.simplify_flat(x)
+        else x
+      } else if(self$input_is_array(x)) {
+        private$.to_flat(x, simplify)
+      } else {
         stop("Input `x` is not in valid array or flattened format.")
       }
     },
@@ -80,27 +88,28 @@ Distribution <- R6Class(
     #' @param x n input points (in flattened or array format)
     #' @return numeric vector of length n
     log_density = function(x) {
-      x <- self$transform_to_array(x)
+      x <- self$transform_to_array(x, simplify=FALSE)
+      if(is.vector(x)) x <- matrix(x, nrow=1L)
       drop(private$.log_density(x))
     },
     
     #' Generate samples
     #' @param n number of samples
     #' @return n samples in array or flattened format.
-    sample = function(n=1L, flatten=FALSE) {
+    sample = function(n=1L, flat=FALSE, simplify=FALSE) {
       x_arr <- private$.sample(n=n)
       
-      if(flatten) self$transform_to_flat(x_arr)
-      else x_arr
+      if(flat) {
+        self$transform_to_flat(x_arr, simplify)
+      } else {
+        if(simplify) private$.simplify_array(x_arr)
+        else x_arr
+      }
     }, 
     
     print = function() {
       cat("Distribution: ", class(self)[1], "\n")
       cat("Shape ", self$shape, " | Length ", self$length())
-    }, 
-    
-    validate_dist_params = function(...) {
-      stop("validate_dist_params() must be implemented by subclasses.")
     }
   ), 
   
@@ -120,7 +129,7 @@ Distribution <- R6Class(
     #' `self$shape`.
     #' 
     #' No input checking here; checking is done in public interface `transform_to_array()`.
-    .from_flat = function(x, simplify=TRUE) {
+    .from_flat = function(x, simplify=FALSE) {
       
       # Handle single value case.
       if(is.vector(x)) x <- matrix(x, nrow=1L)
@@ -135,7 +144,7 @@ Distribution <- R6Class(
       arr <- aperm(arr, c(self$n_dims() + 1L, seq_along(self$shape))) # c(n, self$shape)
       
       # Optionally simplify if there is only a single value.
-      if((n == 1L) && (simplify)) array(arr, dim = dim(arr)[-1L])
+      if(simplify) private$.simplify_array(arr)
       else arr
     },
     
@@ -148,7 +157,7 @@ Distribution <- R6Class(
     #' `from_flat()` to ensure consistent and reproducible conversion.
     #' 
     #' No input checking here; checking is done in public interface `transform_to_flat()`.
-    .to_flat = function(x, simplify=TRUE) {
+    .to_flat = function(x, simplify=FALSE) {
       
       # Handle the case where `x` is a single value.
       if(length(dim(x)) == self$n_dims()) x <- array(x, dim=c(1L, dim(x)))
@@ -159,8 +168,18 @@ Distribution <- R6Class(
       x <- t(x) # (n, self$length())
       
       # Optionally simplify if there is only a single value.
-      if((n == 1L) && (simplify)) x[1,]
+      if(simplify) private$.simplify_flat(x)
       else x
+    },
+    
+    .simplify_array = function(x_arr) {
+      if(dim(x_arr)[1] == 1L) array(x_arr, dim = dim(x_arr)[-1L])
+      else x_arr
+    },
+    
+    .simplify_flat = function(x_flat) {
+      if(nrow(x_flat) == 1L) x_flat[1,]
+      else x_flat
     },
     
     .log_density = function(x_arr) {
@@ -172,6 +191,14 @@ Distribution <- R6Class(
     .sample = function(n=1L) {
       # Out: n samples in array format; c(n,self$shape)
       stop(".sample() must be implemented by subclasses.")
+    }, 
+    
+    .validate_dist_params = function(...) {
+      # This method is intended to be called in the `initialize()` method.
+      # This is currently not enforced in any way; if desired, could be 
+      # enforced by having sub-classes pass list of distribution parameters
+      # to super, and then call this method within super initialize.
+      stop(".validate_dist_params() must be implemented by subclasses.")
     }
     
   )
