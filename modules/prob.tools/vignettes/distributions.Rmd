@@ -66,8 +66,30 @@ print(y$log_density(samp_mat))
 ```
 
 ```{r}
-z <- ProductDistribution$new(x)
+z <- ProductDistribution$new(x, y)
+z$print(print_components=TRUE)
 ```
+```{r}
+# Sampling
+
+samp_flat <- z$sample(3, flat=TRUE)
+samp_arr <- z$sample(3, flat=FALSE)
+
+print("Flat:")
+print(samp_flat)
+
+print("Array:")
+print(samp_arr)
+
+print("Flat to array:")
+print(z$transform_to_array(samp_flat))
+
+print("Array to flat:")
+print(z$transform_to_flat(samp_arr))
+```
+
+
+
 
 
 Things to implement when defining a new distribution:

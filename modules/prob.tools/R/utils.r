@@ -27,7 +27,7 @@ is_distribution <- function(x) {
   "Distribution" %in% class(x)
 }
 
-is_product_distribution <- function() {
+is_product_distribution <- function(x) {
   "ProductDistribution" %in% class(x)
 }
 

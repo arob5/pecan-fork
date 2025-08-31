@@ -24,7 +24,9 @@ Distribution <- R6Class(
     input_is_array = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- ifelse(is.vector(x), length(x), dim(x))
+      if(is.vector(x)) shape_x <- length(x)
+      else shape_x <- dim(x)
+      
       n_dims_x <- length(shape_x)
 
       # Single value in array format.
@@ -32,14 +34,16 @@ Distribution <- R6Class(
       
       # Multiple values in array format.
       if((n_dims_x == self$n_dims+1) && all(shape_x[-1] == self$shape)) return(TRUE)
-      
+
       return(FALSE)
     },
     
     input_is_flat = function(x) {
       if(!(is.vector(x) || is.array(x))) return(FALSE)
       
-      shape_x <- ifelse(is.vector(x), length(x), dim(x))
+      if(is.vector(x)) shape_x <- length(x)
+      else shape_x <- dim(x)
+      
       len_x <- prod(shape_x)
       
       # Single value in flat format.
@@ -106,7 +110,7 @@ Distribution <- R6Class(
     
     print = function() {
       cat("Distribution: ", class(self)[1])
-      cat("\nShape ", self$shape, " | Length ", self$length)
+      cat("\nShape: ", self$shape, " | Length: ", self$length)
       cat("\nConstraint: ", self$constraint)
       
       if(!is.null(self$rv_name)) cat("\nName: ", self$rv_name)
@@ -287,12 +291,6 @@ ProductDistribution <- R6Class(
       super$initialize(shape=NULL)
     },
     
-    length = function() {
-      # Total number of scalars composing the product distribution, NOT the 
-      # component length. See `n_components` for the latter.
-      as.integer(sum(self$apply_component_field("length", "sapply")))
-    },
-    
     log_density = function(x, sum_components=TRUE) {
       # In: array or flat format containing n input values.
       # Out: By default (`sum_components=TRUE`) n vector containing n log-density evals.
@@ -320,6 +318,27 @@ ProductDistribution <- R6Class(
       } 
     },
     
+    print = function(print_components=FALSE) {
+      str <- "ProductDistribution("
+      for(i in seq_len(self$n_components)) {
+        if(i != 1L) str <- paste0(str, ", ")
+        shp <- paste0(self$components[[i]]$shape, collapse=",")
+        str <- paste0(str, class(self$components[[i]])[1], "(", shp, ")")
+      }
+      str <- paste0(str, ")")
+      
+      str <- paste0(str, "\nNumber components: ", self$n_components, 
+                    " | Length: ", self$length)
+      cat(str, "\n")
+      
+      if(print_components) {
+        for(comp in self$components) {
+          cat("\n")
+          comp$print()
+        }
+      }
+    },
+    
     input_is_array = function(x) {
       # TRUE if `x` is a list of component values, each of which is a valid array.
       # Note that `input_is_flat()` is inherited from `Distribution` unchanged.
@@ -340,9 +359,12 @@ ProductDistribution <- R6Class(
       include_extra_args <- (length(list(...)) > 0L)
       
       # No arguments.
-      if(!is.null(args_list)) {
-        if(include_extra_args) match.fun(apply_func)(self$components, function(comp) comp[[method_name]](...))
-        else match.fun(apply_func)(self$components, function(comp) comp[[method_name]]()) 
+      if(is.null(args_list)) {
+        if(include_extra_args) {
+          return(match.fun(apply_func)(self$components, function(comp) comp[[method_name]](...)))
+        } else {
+          return(match.fun(apply_func)(self$components, function(comp) comp[[method_name]]()))
+        }
       }
       
       # Has arguments.
@@ -368,8 +390,27 @@ ProductDistribution <- R6Class(
   active = list(
     n_components = function(value) {
       if(missing(value)) length(self$components)
-      else stop("Cannot set `n_components` in ProductDistribution.")
-    } 
+      else stop("Cannot set `n_components` in `ProductDistribution`")
+    }, 
+    
+    length = function(value) {
+      # Total number of scalars composing the product distribution, NOT the 
+      # component length. See `n_components` for the latter.
+      if(missing(value)) as.integer(sum(self$apply_component_field("length", "sapply")))
+      else stop("Cannot set `length` in `ProductDistribution`")
+    },
+    
+    n_dims = function(value) {
+      # No notion of `n_dims` for product distribution.
+      if(missing(value)) NULL
+      else stop("Cannot set `n_dims` in `ProductDistribution`")
+    },
+    
+    shape = function(value) {
+      # No notion of `shape` for product distribution.
+      if(missing(value)) NULL
+      else stop("Cannot set `shape` in `ProductDistribution`")
+    }
   ), 
   
   private = list(
@@ -394,9 +435,9 @@ ProductDistribution <- R6Class(
     
     .array_to_flat = function(x_arr, simplify=FALSE) {
       mat_list <- self$apply_component_method("transform_to_flat", x_arr, "lapply", simplify=simplify)
-      mat <- do.call(mat_list, cbind)
+      mat <- do.call(cbind, mat_list)
       
-      if(simplify) private$.simplify_flat(mat)
+      if(simplify) super$.simplify_flat(mat)
       else mat
     }
   )
