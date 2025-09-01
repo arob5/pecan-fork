@@ -32,6 +32,8 @@ MultivariateNormal <- R6Class(
     .constraint = "None",
     
     .log_density = function(x) {
+      # In: (n,d) matrix
+      # Out: (n,1) vector of log-density evaluations.
       
       # solve L z = y to obtain z = L^{-1} y, where y=x-mean.
       z <- backsolve(self$chol_lower, t(x-self$mean))

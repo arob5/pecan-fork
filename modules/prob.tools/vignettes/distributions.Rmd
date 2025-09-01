@@ -11,7 +11,7 @@ code_dir <- file.path(base_dir, "R")
 dist_dir <- file.path(code_dir, "distributions")
 
 source(file.path(code_dir, "utils.r"))
-source(file.path(dist_dir, "base_distribution.r"))
+source(file.path(dist_dir, "distribution_base.r"))
 source(file.path(dist_dir, "normal.r"))
 source(file.path(dist_dir, "multivariate_normal.r"))
 ```

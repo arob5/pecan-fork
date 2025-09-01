@@ -9,16 +9,16 @@
 Distribution <- R6Class(
   classname = "Distribution",
   public = list(
-    rv_name = NULL,
-    rv_scalar_names = NULL,
+    rv_label = NULL,
+    rv_scalar_labels = NULL,
     
-    initialize = function(shape, rv_name=NULL, rv_scalar_names=NULL) {
+    initialize = function(shape, rv_label=NULL, rv_scalar_labels=NULL) {
       if (class(self)[1] == "Distribution") {
         stop("Distribution is an abstract class and cannot be instantiated directly.")
       }
       private$.shape <- shape
-      self$rv_name <- rv_name
-      self$rv_scalar_names <- rv_scalar_names # TODO: write setter for this to handle shape/validation
+      self$rv_label <- rv_label
+      self$rv_scalar_labels <- rv_scalar_labels # TODO: write setter for this to handle shape/validation
     },
     
     input_is_array = function(x) {
@@ -113,8 +113,8 @@ Distribution <- R6Class(
       cat("\nShape: ", self$shape, " | Length: ", self$length)
       cat("\nConstraint: ", self$constraint)
       
-      if(!is.null(self$rv_name)) cat("\nName: ", self$rv_name)
-      if(!is.null(self$rv_scalar_names)) cat("\nScalar names: ", self$scalar_names)
+      if(!is.null(self$rv_label)) cat("\nName: ", self$rv_label)
+      if(!is.null(self$rv_scalar_labels)) cat("\nScalar names: ", self$scalar_names)
       cat("\n")
     }, 
     
