@@ -1,7 +1,63 @@
+# distributions/multivariate_normal.r
 
 # Constants
 LOG_TWO_PI <- log(2.0 * pi)
 
+#' Multivariate normal (\code{N(m, C)}) distribution
+#'
+#' \code{MultivariateNormal} is an R6 class representing a multivariate normal (Gaussian) distribution,
+#' inheriting from \code{\link{Distribution}}. It supports arbitrary mean vectors and covariance matrices,
+#' and computation is performed using the Cholesky decomposition for numerical efficiency.
+#'
+#' The class provides methods to sample from the distribution and evaluate its log-density, as well as 
+#' accessors for the mean vector, covariance matrix, precision matrix, and Cholesky factor. 
+#' The covariance and Cholesky factor can be provided directly; if only one is supplied, 
+#' the other is computed lazily as needed (once computed, the results are cached).
+#'
+#' @section Public fields:
+#'   \describe{
+#'     \item{\code{mean}}{Mean vector of the distribution.}
+#'   }
+#'
+#' @section Active bindings:
+#'   \describe{
+#'     \item{\code{cov}}{Covariance matrix \eqn{C}.}
+#'     \item{\code{chol_lower}}{Lower-triangular Cholesky factor of the covariance.}
+#'     \item{\code{precision}}{Precision matrix (inverse covariance).}
+#'   }
+#'
+#' @section Public Methods:
+#'   \describe{
+#'     \item{\code{initialize(mean = NULL, cov = NULL, chol_lower = NULL, check_pos_def = FALSE, ...)}}
+#'       {Constructor. At least one of `mean`, `cov`, or `chol_lower` must be supplied. If `cov` is provided and
+#'       `check_pos_def = TRUE`, it is checked and the Cholesky factor is cached.}
+#'   }
+#'
+#' @details
+#' - The dimension \eqn{d} is inferred from any of the provided parameters.
+#' - Either covariance matrix (\code{cov}) or its Cholesky factor (\code{chol_lower}) 
+#'   can be provided; if both are given, an error is raised.
+#' - If only the mean is provided, covariance defaults to identity.
+#' - If only the covariance/Cholesky factor is provided, mean defaults to zero vector.
+#' - All sampling and density evaluation is performed via the Cholesky factor.
+#'
+#' @examples
+#' # Create a 2D standard normal
+#' mvn <- MultivariateNormal$new(mean = c(0, 0), cov = diag(c(1,2)))
+#' print(mvn$mean)
+#' x <- mvn$sample(5)         # Draw 5 samples
+#' mvn$log_density(x)  # Evaluate log-density at the 5 samples
+#'
+#' # Using a custom Cholesky factor
+#' chol_lower <- t(chol(diag(c(1, 2))))
+#' mvn2 <- MultivariateNormal$new(mean = c(1, 1), chol_lower = chol_lower)
+#'
+#' @seealso \code{\link{Distribution}}
+#'
+#' @docType class
+#' @name MultivariateNormal
+#' @author Andrew Roberts
+#' @export
 MultivariateNormal <- R6Class(
   classname = "MultivariateNormal",
   inherit = Distribution,

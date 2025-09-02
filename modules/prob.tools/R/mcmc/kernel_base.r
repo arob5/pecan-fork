@@ -47,6 +47,48 @@ MarkovKernel <- R6::R6Class(
 )
 
 
+#' Factory class for generating user-defined Markov kernel objects from R functions
+#'
+#' An R6 class for generating Markov kernels from user-supplied functions.
+#' This allows users to specify custom transition behavior for MCMC algorithms
+#' while leveraging the standard MarkovKernel interface.
+#'
+#' The \code{step_fun} function should accept the current state as its argument
+#' and return the next state. A Markov kernel generated using this class
+#' will necessarily be stateless/non-adaptive.
+#'
+#' @section Public fields:
+#' \describe{
+#'   \item{\code{step_fun}}{A user-supplied function implementing the MCMC transition.}
+#' }
+#'
+#' @section Public methods:
+#' \describe{
+#'   \item{\code{initialize(step_fun)}}{Constructs the kernel with the given transition function.}
+#'   \item{\code{step(state)}}{Applies \code{step_fun} to the supplied state and returns the result.}
+#' }
+#'
+#' @examples
+#' # Random walk kernel via a user function
+#' rw_fun <- function(x) x + rnorm(1)
+#' kernel <- UserMarkovKernel$new(step_fun=rw_fun)
+#' kernel$step(0)
+#'
+#' @seealso \code{\link{MarkovKernel}}, \code{\link{make_markov_kernel}}
+#'
+#' @docType class
+#' @name UserMarkovKernel
+UserMarkovKernel <- R6::R6Class(
+  classname = "UserMarkovKernel",
+  inherit = MarkovKernel,
+  public = list(
+    step_fun = NULL,
+    initialize = function(step_fun) self$step_fun <- step_fun,
+    step = function(state) self$step_fun(state)
+  )
+)
+
+
 #' Create a Markov kernel object for MCMC
 #'
 #' Constructs a \code{MarkovKernel} R6 object from either a function or an 
@@ -55,15 +97,17 @@ MarkovKernel <- R6::R6Class(
 #'
 #' If a function is provided, it must take a state as input and return a new 
 #' state; the function is used to define the \code{step} method of a new 
-#' \code{MarkovKernel} object. If an object of class \code{MarkovKernel} is 
-#' provided, it is returned unmodified.
+#' \code{MarkovKernel} object. The generated object will be of class
+#' \code{UserMarkovKernel}. If an object of class \code{MarkovKernel} is 
+#' provided, it is returned unmodified. This function is primarily for use
+#' in \code{\link{run_mcmc_chain}}.
 #'
 #' @param obj Either a function implementing a Markov kernel step, or an existing
 #'   \code{MarkovKernel} R6 object.
 #'
 #' @return A \code{MarkovKernel} R6 object suitable for use in MCMC routines.
 #'
-#' @seealso \code{\link{MarkovKernel}}
+#' @seealso \code{\link{MarkovKernel}}, \code{\link{UserMarkovKernel}}
 #'
 #' @examples
 #' # Example 1: Create a MarkovKernel from a simple random walk function
@@ -77,14 +121,27 @@ MarkovKernel <- R6::R6Class(
 #' try(make_markov_kernel("not a function"))
 #' @export
 make_markov_kernel <- function(obj) {
-  if (is.function(obj)) {
-    MarkovKernel$new(
-      step = obj,
-      update = function(...) NULL
-    )
-  } else if (inherits(obj, "MarkovKernel")) {
+  if(is.function(obj)) {
+    UserMarkovKernel$new(step_fun=obj)
+  } else if(is_markov_kernel(obj)) {
     obj
   } else {
-    stop("Must provide a function or Kernel object")
+    stop("Must provide a function or MarkovKernel object")
   }
 }
+
+#' Check whether an object inherits from \code{MarkovKernel}
+#'
+#' @param obj An R object.
+#' 
+#' @return \code{TRUE} if \code{obj} inherits from \code{MarkovKernel}; else \code{FALSE}.
+#'
+#' @seealso \code{\link{MarkovKernel}}
+#' @export
+is_markov_kernel <- function(obj) {
+  inherits(obj, "MarkovKernel")
+}
+
+
+
+
