@@ -379,23 +379,6 @@ Distribution <- R6Class(
 )
 
 
-#' Container holding `Distribution` objects used to define a product distribution.
-#' 
-#' This class is effectively a wrapper around a list of `Distribution` objects.
-#' `ProductDistribution` is itself a `Distribution`. Its log-density method 
-#' is defined as the sum of the log-densities of its component `Distribution`
-#' objects. Its `sampling` method either returns a list (one element per
-#' `Distribution`) or appends the samples from each `Distribution` into 
-#' a single matrix (the flat data format). Thus, the array vs flat data 
-#' formats for a `Distribution` are replaced with list of array vs flat 
-#' data formats for a `ProductDistribution`. For consistency, we still refer 
-#' to the former as the "array" format. To convert between the two formats,
-#' the ordering of the component list used to initialize the `ProductDistribution`
-#' is preserved. The constructor accepts other `ProductDistribution` objects
-#' in the constructor, but no nesting is done under the hood. The constructor
-#' will simply extract the components and append them to the component list.
-#' 
-#' 
 #' ProductDistribution: Cartesian product of \code{\link{Distribution}} objects
 #'
 #' \code{ProductDistribution} is an R6 class that represents the product (joint) of multiple

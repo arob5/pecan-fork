@@ -1,5 +1,23 @@
 # mcmc/mcmc_kernels.r
 
+MetropolisProposal <- R6::R6Class(
+  classname = "MetropolisProposal",
+  public = list(
+    initialize = function(...) {
+      stop("Abstract base MetropolisProposal class cannot be instantiated.")
+    }, 
+    
+    propose = function(state) {
+      stop("`propose()` must be implemented by MetropolisProposal subclasses.")
+    }, 
+    
+    log_density = function(old_state, new_state) {
+      stop("`log_density()` must be implemented by MetropolisProposal subclasses.")
+    }
+  )
+)
+
+
 #' A basic Metropolis-Hastings kernel for MCMC
 #'
 #' An R6 class implementing a random walk Metropolis-Hastings (MH) kernel, 
@@ -38,14 +56,31 @@ MetropolisKernel <- R6::R6Class(
   classname = "MetropolisKernel",
   inherit = MarkovKernel,
   public = list(
-    L = NULL, 
-    d = NULL,
-    initialize = function(cov) {
-      self$L <- t(chol(cov))
+    initialize = function(log_density, proposal) {
+      self$log_density <- log_density
+      self$proposal <- proposal
     }, 
     
     step = function(state) {
-      state + self$L %*% rnorm(self$d)
+      proposed_state <- self$proposal$propose(state)
+      
+      # Target densities.
+      log_p_current <- self$state_info$log_density
+      if(is.null(log_p_current)) log_p_current <- self$log_density(state)
+      log_p_proposed <- self$log_density(proposed_state)
+      
+      # Proposal densities.
+      log_q_fwd <- self$proposal$log_density(state, proposed_state)
+      log_q_back <- self$proposal$log_density(proposed_state, state)
+      
+      log_alpha = (log_p_proposed - log_p_current) + (log_q_back - log_q_fwd)
+      
+      if(log(runif()) < log_alpha) {
+        self$state_info <- list(log_density=log_p_proposed)
+        return(proposed_state)
+      } else {
+        return(state)
+      }
     }
   )
 )

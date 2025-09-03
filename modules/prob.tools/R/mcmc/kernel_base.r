@@ -1,48 +1,62 @@
 # mcmc/kernel_base.r
 
-#' Markov kernel abstract base class
+#' Markov kernel base class
 #'
-#' An abstract R6 class defining the interface for Markov kernels used in MCMC 
-#' algorithms. A Markov kernel defines a transition mechanism via its 
-#' \code{step} method, which simply outputs a new state given the current state.
-#' A Markov kernel can optionally be adapted via the \code{update} method.
-#'
-#' Subclasses must implement the \code{step} method to advance the Markov chain,
-#' and optionally the \code{update} method for adaptive behavior.
-#'
-#' This class should not be instantiated directly; instead, provide a function to
-#' \code{make_markov_kernel()} or define a subclass.
+#' Defines the interface for MCMC kernels. A kernel must implement the
+#' method \code{step()}, and optionally the methods \code{update()}, and 
+#' \code{get_info()}. Subclasses can add internal
+#' state as needed (for example, proposal distributions, adaptation
+#' parameters, etc.). This base class should not be instantiated directly.
 #'
 #' @section Public methods:
 #' \describe{
 #'   \item{\code{step(state)}}{Performs a single MCMC step, returning the next state.
 #'     This method must be implemented in subclasses.}
 #'   \item{\code{update(...)}}{Updates the kernel's internal state for adaptation.
-#'   The default creates a non-adaptive kernel.}
+#'    The default creates a non-adaptive kernel.}
+#'   \item{\code{update(...)}}{Returns a list of auxiliary information associated
+#'    with the current state that is of interest to the user. This information
+#'    is collected in \code{\link{run_mcmc_chain()}} and returned.}
 #' }
 #'
-#' @examples
-#' # Example subclass implementing a simple random-walk kernel
-#' RandomWalkKernel <- R6::R6Class(
-#'   classname = "RandomWalkKernel",
-#'   inherit = MarkovKernel,
-#'   public = list(
-#'     step = function(state) state + rnorm(1),
-#'     update = function(...) NULL
-#'   )
-#' )
-#' kernel <- RandomWalkKernel$new()
-#' kernel$step(0)  # Advance one step
-#'
-#' @seealso \code{\link{make_markov_kernel}}
+#' @seealso \code{\link{run_mcmc_chain}}, \code{\link{MetropolisKernel}}, 
 #'
 #' @docType class
 #' @name MarkovKernel
+#' @author Andrew Roberts
+#' @export
 MarkovKernel <- R6::R6Class(
-  classname = "Kernel",
+  classname = "MarkovKernel",
   public = list(
-    step = function(state) stop("Abstract base MarkovKernel class cannot be instantiated."),
-    update = function(...) NULL
+    #' Step function
+    #'
+    #' Advance the chain by one iteration.
+    #' @param state An object of class \code{MCMCState}.
+    #' @return A new object of class \code{MCMCState}.
+    step = function(state) {
+      stop("step() must be implemented by subclass")
+    },
+    
+    #' Update function
+    #'
+    #' Optional method to adapt the kernel after each iteration.
+    #' @param state An object of class \code{MCMCState}.
+    #' @param iter Integer, current iteration number.
+    #' @return Invisibly returns NULL.
+    update = function(state, iter=NULL) {
+      invisible(NULL)
+    },
+    
+    #' Get auxiliary information
+    #'
+    #' Return auxiliary information from the last transition.
+    #' This may include acceptance probabilities, adaptation
+    #' statistics, etc.
+    #'
+    #' @return A list or NULL.
+    get_info = function() {
+      NULL
+    }
   )
 )
 
@@ -78,6 +92,9 @@ MarkovKernel <- R6::R6Class(
 #'
 #' @docType class
 #' @name UserMarkovKernel
+#' 
+#' @author Andrew Roberts
+#' @export
 UserMarkovKernel <- R6::R6Class(
   classname = "UserMarkovKernel",
   inherit = MarkovKernel,
@@ -96,7 +113,7 @@ UserMarkovKernel <- R6::R6Class(
 #' stateful kernels to be used uniformly in MCMC algorithms.
 #'
 #' If a function is provided, it must take a state as input and return a new 
-#' state; the function is used to define the \code{step} method of a new 
+#' state; the function is used to define the \code{step()} method of a new 
 #' \code{MarkovKernel} object. The generated object will be of class
 #' \code{UserMarkovKernel}. If an object of class \code{MarkovKernel} is 
 #' provided, it is returned unmodified. This function is primarily for use
@@ -119,6 +136,8 @@ UserMarkovKernel <- R6::R6Class(
 #'
 #' # Example 3: Error from an unsupported type
 #' try(make_markov_kernel("not a function"))
+#' 
+#' @author Andrew Roberts
 #' @export
 make_markov_kernel <- function(obj) {
   if(is.function(obj)) {
@@ -137,6 +156,7 @@ make_markov_kernel <- function(obj) {
 #' @return \code{TRUE} if \code{obj} inherits from \code{MarkovKernel}; else \code{FALSE}.
 #'
 #' @seealso \code{\link{MarkovKernel}}
+#' @author Andrew Roberts
 #' @export
 is_markov_kernel <- function(obj) {
   inherits(obj, "MarkovKernel")
