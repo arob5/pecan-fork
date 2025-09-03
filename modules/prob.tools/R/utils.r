@@ -1,4 +1,52 @@
-# Probabilistic modeling utility/helper functions.
+# prob.tools/R/utils.r
+
+#' Check if an R object is a named vector, with all names provided (empty
+#' strings are not allowed).
+#' 
+#' @param x An R object
+#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @returns logical, \code{TRUE} if a vector with all names provided. 
+#' @author Andrew Roberts
+is_named_numeric_vector <- function(x, check_unique=TRUE) {
+  is.numeric(x) &&
+  is.atomic(x) &&
+  !is.array(x) &&
+  has_names(x, check_unique)
+}
+
+
+#' Check if an R object is a named list, with all names provided (empty
+#' strings are not allowed).
+#' 
+#' @param x An R object
+#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @returns logical, \code{TRUE} if a list with all names provided. 
+#' @author Andrew Roberts
+is_named_list <- function(x, check_unique=TRUE) {
+  is.list(x) &&
+  length(x) > 0 &&
+  has_names(x, check_unique)
+}
+
+#' Check that R object has full set of names
+#' 
+#' Check if an R object has names, and that every element of the object
+#' has a name (empty string does not count as a name). Optionally check 
+#' that the names are unique. An object without a names attribute is considered 
+#' to not have names.
+#' 
+#' @param x An R object
+#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' 
+#' @returns logical, \code{TRUE} if object has full set of (unique) names.
+#' @author Andrew Roberts
+has_names <- function(x, check_unique=TRUE) {
+  !is.null(names(x)) &&
+  length(names(x)) == length(x) &&
+  all(nzchar(names(x))) && # Ensure no "" names.
+  (!check_unique || !anyDuplicated(names(x)))
+}
+
 
 #' Check if a matrix is positive definite, and return Cholesky factor
 #'
@@ -8,7 +56,7 @@
 #' 
 #' @param m A matrix 
 #'
-#' @return A \code{list} with names \code{is_pos_def} and \code{chol_upper}.
+#' @returns A \code{list} with names \code{is_pos_def} and \code{chol_upper}.
 #' @author Andrew Roberts
 is_positive_definite <- function(m) {
   out <- tryCatch({
@@ -20,6 +68,7 @@ is_positive_definite <- function(m) {
   return(out)
 }
 
+
 #' Check if a matrix is lower triangular
 #'
 #' A lower triangular matrix is one in which all entries strictly above the 
@@ -28,7 +77,7 @@ is_positive_definite <- function(m) {
 #' 
 #' @param m A matrix 
 #'
-#' @return \code{TRUE} if \code{m} is lower triangular, else \code{FALSE}.
+#' @returns \code{TRUE} if \code{m} is lower triangular, else \code{FALSE}.
 #' @seealso \code{\link{is_upper_tri}}
 #' @author Andrew Roberts
 is_lower_tri <- function(m) {
@@ -43,7 +92,7 @@ is_lower_tri <- function(m) {
 #' 
 #' @param m A matrix 
 #'
-#' @return \code{TRUE} if \code{m} is upper triangular, else \code{FALSE}.
+#' @returns \code{TRUE} if \code{m} is upper triangular, else \code{FALSE}.
 #' @seealso \code{\link{is_upper_tri}}
 #' @author Andrew Roberts
 is_upper_tri <- function(m) {
