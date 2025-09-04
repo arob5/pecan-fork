@@ -423,10 +423,14 @@ Distribution <- R6Class(
 #'       {Prints a summary of the product distribution and (optionally) its components.}
 #'     \item{\code{input_is_array(x)}}
 #'       {Checks if \code{x} is a list of component arrays conforming to each distribution.}
-#'     \item{\code{apply_component_method(method_name, args_list = NULL, ...)}}
-#'       {Applies a public method to each component.}
-#'     \item{\code{apply_component_field(field_name)}}
-#'       {Accesses a public field from each component.}
+#'     \item{\code{vapply_component_method(method_name, FUN.VALUE, args_list = NULL, ...)}}
+#'       {Applies a public method to each component using \code{vapply}.}
+#'     \item{\code{lapply_component_method(method_name, args_list = NULL, ...)}}
+#'       {Applies a public method to each component using \code{lapply}.}
+#'     \item{\code{vapply_component_field(field_name, FUN.VALUE)}
+#'       {Accesses a public field from each component using \code{vapply}.}
+#'     \item{\code{lapply_component_field(field_name)}
+#'       {Accesses a public field from each component using \code{lapply}.}
 #'   }
 #'
 #' @section Details:
@@ -465,10 +469,10 @@ ProductDistribution <- R6Class(
         stop("`ProductDistribution` cannot be initialized without components.")
       }
       
-      if(!all(sapply(components, function(comp) is_distribution(comp)))) {
+      if(!all(vapply(components, is_distribution, logical(1)))) {
         stop("All `ProductDistribution` components must inherit from `Distribution`")
       }
-      
+
       self$components <- list()
       for(comp in components) {
         if(is_product_distribution(comp)) self$components <- c(self$components, comp$components)
@@ -488,7 +492,8 @@ ProductDistribution <- R6Class(
     #'  log-density evaluations for each component are stacked in the rows.
     log_density = function(x, sum_components=TRUE) {
       x <- self$transform_to_array(x) # List of c(n, shp_i) arrays.
-      ldens_components <- self$apply_component_method("log_density", x, "sapply") # (n,n_components)
+      n <- dim(x[[1]])[1]
+      ldens_components <- self$vapply_component_method("log_density", numeric(n), x) # (n,n_components)
 
       if(sum_components) rowSums(ldens_components)
       else ldens_components
@@ -496,8 +501,7 @@ ProductDistribution <- R6Class(
 
     sample = function(n=1L, flat=FALSE, simplify=FALSE) {
       # List of component samples.
-      samp <- self$apply_component_method("sample", NULL, "lapply", 
-                                          n=n, flat=flat, simplify=simplify)
+      samp <- self$lapply_component_method("sample", NULL, n=n, flat=flat, simplify=simplify)
 
       if(flat) {
         samp <- do.call(cbind, samp)
@@ -536,10 +540,55 @@ ProductDistribution <- R6Class(
       if(!is.list(x)) return(FALSE)
       if(length(x) != self$n_components) return(FALSE)
       
-      all(self$apply_component_method("input_is_array", x, "sapply"))
+      all(self$vapply_component_method("input_is_array", logical(1), x))
     },
 
-    #' Apply a public method to each component
+    #' Apply a public method to each component using \code{vapply}
+    #' 
+    #' Applies the method \code{method_name} to each component, where \code{args_list}
+    #' is a list of length \code{n_component} containing arguments for each component
+    #' method call. Only works for public methods. Additional arguments that 
+    #' are constant across method calls can be forwarded via \code{...}.
+    #'
+    #' @param method_name The name of a public method of \code{\link{Distribution}}
+    #' @param FUN.VALUE array template for return value of method; passed to the argument
+    #'  of the same name in \code{vapply}.
+    #' @param args_list list of length \code{n_components} of arguments to pass
+    #'  to each method call. The argument is currently assumed to be the first
+    #'  argument of the method.
+    #' @param ... Additional arguments to pass, fixed across all method calls.
+    #' 
+    #' @returns An array returned by \code{vapply}, where the dimensions are 
+    #'  determined by the \code{FUN.VALUE} template.
+    vapply_component_method = function(method_name, FUN.VALUE, args_list=NULL, ...) {
+      include_extra_args <- (length(list(...)) > 0L)
+      
+      # No arguments.
+      if(is.null(args_list)) {
+        if(include_extra_args) {
+          return(vapply(self$components, function(comp) comp[[method_name]](...), FUN.VALUE))
+        } else {
+          return(vapply(self$components, function(comp) comp[[method_name]](), FUN.VALUE))
+        }
+      }
+      
+      # Has arguments.
+      if(length(args_list) != self$n_components) {
+        stop("`args_list` does not have length equal to number of components.")
+      }
+      
+      if(include_extra_args) {
+        vapply(seq_len(self$n_components), 
+               function(i) self$components[[i]][[method_name]](args_list[[i]]),
+               FUN.VALUE)
+      } else {
+        vapply(seq_len(self$n_components), 
+               function(i) self$components[[i]][[method_name]](args_list[[i]]), 
+               FUN.VALUE, ...)
+      }
+    }, 
+    
+    #' Apply a public method to each component using \code{lapply}
     #' 
     #' Applies the method \code{method_name} to each component, where \code{args_list}
     #' is a list of length \code{n_component} containing arguments for each component
@@ -550,17 +599,18 @@ ProductDistribution <- R6Class(
     #' @param args_list list of length \code{n_components} of arguments to pass
     #'  to each method call. The argument is currently assumed to be the first
     #'  argument of the method.
-    #' @param apply_func The "apply" function to use; e.g., \code{lapply} or \code{sapply}.
     #' @param ... Additional arguments to pass, fixed across all method calls.
-    apply_component_method = function(method_name, args_list=NULL, apply_func="lapply", ...) {
+    #' 
+    #' @returns A list returned by \code{lapply}.
+    lapply_component_method = function(method_name, args_list=NULL, ...) {
       include_extra_args <- (length(list(...)) > 0L)
       
       # No arguments.
       if(is.null(args_list)) {
         if(include_extra_args) {
-          return(match.fun(apply_func)(self$components, function(comp) comp[[method_name]](...)))
+          return(lapply(self$components, function(comp) comp[[method_name]](...)))
         } else {
-          return(match.fun(apply_func)(self$components, function(comp) comp[[method_name]]()))
+          return(lapply(self$components, function(comp) comp[[method_name]]()))
         }
       }
       
@@ -570,24 +620,37 @@ ProductDistribution <- R6Class(
       }
       
       if(include_extra_args) {
-        match.fun(apply_func)(seq_len(self$n_components), 
-                              function(i) self$components[[i]][[method_name]](args_list[[i]]))
+        lapply(seq_len(self$n_components), 
+               function(i) self$components[[i]][[method_name]](args_list[[i]]))
       } else {
-        match.fun(apply_func)(seq_len(self$n_components), 
-                              function(i) self$components[[i]][[method_name]](args_list[[i]]), ...)
+        lapply(seq_len(self$n_components), 
+               function(i) self$components[[i]][[method_name]](args_list[[i]]), ...)
       }
-    }, 
+    },
     
     
-    #' Access a public attribute from each component
+    #' Access a public attribute from each component using \code{vapply}
     #'
     #' @param field_name The name of a public field of \code{\link{Distribution}}
-    #' @param apply_func The "apply" function to use; e.g., \code{lapply} or \code{sapply}.
-    apply_component_field = function(field_name, apply_func="lapply") {
+    #' @param FUN.VALUE array template for return value of method; passed to the argument
+    #'  of the same name in \code{vapply}.
+    #'  
+    #' @returns An array returned by \code{vapply}, where the dimensions are 
+    #'  determined by the \code{FUN.VALUE} template.
+    vapply_component_field = function(field_name, FUN.VALUE) {
       # Only works for public fields.
-      match.fun(apply_func)(self$components, function(comp) comp[[field_name]]) 
+      vapply(self$components, function(comp) comp[[field_name]], FUN.VALUE) 
     }
-  ), 
+  
+    #' Access a public attribute from each component using \code{lapply}
+    #'
+    #' @param field_name The name of a public field of \code{\link{Distribution}}
+    #' @returns list returned by \code{lapply}.
+    lapply_component_field = function(field_name) {
+      # Only works for public fields.
+      lapply(self$components, function(comp) comp[[field_name]]) 
+    }
+), 
   
   active = list(
     n_components = function(value) {
@@ -598,7 +661,7 @@ ProductDistribution <- R6Class(
     length = function(value) {
       # Total number of scalars composing the product distribution, NOT the 
       # component length. See `n_components` for the latter.
-      if(missing(value)) as.integer(sum(self$apply_component_field("length", "sapply")))
+      if(missing(value)) sum(self$vapply_component_field("length", integer(1)))
       else stop("Cannot set `length` in `ProductDistribution`")
     },
     
@@ -617,7 +680,7 @@ ProductDistribution <- R6Class(
   
   private = list(
     .simplify_array = function(x_arr) {
-      self$apply_component_method("simplify_array", x_arr, "lapply", check_type=FALSE)
+      self$lapply_component_method("simplify_array", x_arr, check_type=FALSE)
     }, 
     
     .flat_to_array = function(x_flat, simplify=FALSE) {
@@ -636,7 +699,7 @@ ProductDistribution <- R6Class(
     }, 
     
     .array_to_flat = function(x_arr, simplify=FALSE) {
-      mat_list <- self$apply_component_method("transform_to_flat", x_arr, "lapply", simplify=simplify)
+      mat_list <- self$lapply_component_method("transform_to_flat", x_arr, simplify=simplify)
       mat <- do.call(cbind, mat_list)
       
       if(simplify) super$.simplify_flat(mat)
