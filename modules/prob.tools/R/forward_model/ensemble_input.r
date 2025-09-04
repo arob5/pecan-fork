@@ -32,8 +32,8 @@
 #'
 #' @author Andrew Roberts
 #' @export
-ensemble_input <- function(run_id, settings, runtime_input=NULL, metadata=NULL) {
-  x <- .new_ensemble_input(run_id, runtime_input, settings, metadata)
+EnsembleInput <- function(run_id, settings, runtime_input=NULL, metadata=NULL) {
+  x <- .new_ensemble_input(run_id, settings, runtime_input, metadata)
   validate_ensemble_input(x)
   
   return(x)
@@ -91,6 +91,10 @@ validate_ensemble_input <- function(x) {
     if(!all(vapply(x$runtime_input, is_runtime_input, logical(1)))) {
       stop("ensemble_input$runtime_input must be a list column of `RuntimeInput` objects.")
     }
+  }
+  
+  if(any(duplicated(x$run_id))) {
+    stop("`ensemble_input$run_id` cannot contain duplicates.")
   }
 
   invisible(x)
@@ -176,8 +180,9 @@ print.EnsembleInput <- function(x, ...) {
   # Metadata columns.
   metadata_cols <- setdiff(names(x), cols)
   if(length(metadata_cols) > 0L) {
-    print("Metadata columns:")
-    print(paste(metadata_cols, collapse=", "))
+    cat("Metadata columns:\n")
+    cat("  ", paste(metadata_cols, collapse=", "))
+    cat("\n")
   }
   
   # Print first few rows with structure info
@@ -249,3 +254,35 @@ filter_run_id <- function(x, ids) {
   
   x[x$run_id %in% ids, ]
 }
+
+
+#' Return the output path associated with a particular run ID
+#'
+#' The output path is constructed from the selected \code{settings} object and 
+#' @code{run_id} as @code{file.path(settings$modeloutdir,run_id)}.
+#'
+#' @param x An \code{EnsembleInput} object.
+#' @param run_id character(1), the run ID to select.
+#' @return character(1), the path to which model output is saved for the selected run.
+#'
+#' @author Andrew Roberts
+#' @export
+output_path <- function(x, run_id) {
+  
+  if(!is_scalar(run_id)) {
+    stop("`output_path()` requires `run_id` to be a scalar.")
+  }
+  
+  x <- filter_run_id(x, run_id)
+  
+  if(nrow(x) == 0L) {
+    stop("`run_id` does not match run IDs in `EnsembleInput` object.")
+  }
+
+  file.path(x$settings[[1]]$modeloutdir, run_id)
+}
+
+
+
+
+

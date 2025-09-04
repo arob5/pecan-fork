@@ -110,8 +110,9 @@ print.RuntimeInput <- function(x, include_param_names=FALSE, include_ic_names=FA
   
   # Print parameter information
   if(!is.null(x$param)) {
-    cat("  param: ", length(x$param), " parameters\n", sep="")
+    cat("  param: ", length(x$param), " parameter(s)\n", sep="")
     if(include_param_names) {
+      cat("    ")
       for(param_name in names(x$param)) cat(param_name, " ")
       cat("\n")
     }
@@ -119,8 +120,9 @@ print.RuntimeInput <- function(x, include_param_names=FALSE, include_ic_names=FA
   
   # Print initial condition information
   if(!is.null(x$ic)) {
-    cat("  ic: ", length(x$ic), " initial conditions\n", sep="")
+    cat("  ic: ", length(x$ic), " initial condition(s)\n", sep="")
     if(include_ic_names) {
+      cat("    ")
       for(ic_name in names(x$ic)) cat(ic_name, " ")
       cat("\n")
     }

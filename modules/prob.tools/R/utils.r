@@ -1,5 +1,50 @@
 # prob.tools/R/utils.r
 
+#' Check if an R object is an atomic scalar
+#' 
+#' Must be atomic and length one. Singleton arrays, scalars, etc. are not
+#' considered scalars.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if an atomic scalar.
+#' @seealso \code{\link{is_numeric_scalar}}, \code{\link{is_integer_scalar}}
+#' @author Andrew Roberts
+is_scalar <- function(x) {
+  is.atomic(x) &&
+    !is.array(x) &&
+    length(x) == 1L
+}
+
+
+#' Check if an R object is a numeric scalar
+#' 
+#' A numeric scalar must be numeric, atomic, and length one. Singleton arrays,
+#' data.frames, etc. are not considered scalars.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if a numeric scalar.
+#' @seealso \code{\link{is_scalar}}, \code{\link{is_integer_scalar}}
+#' @author Andrew Roberts
+is_numeric_scalar <- function(x) {
+  is_scalar(x) && is.numeric(x)
+}
+
+
+#' Check if an R object is an integer scalar
+#' 
+#' The object is considered an integer scalar if it is a numeric scalar and
+#' can be safely coerced to an integer; that is, both 5.0 and 5L are considered
+#' integer scalars.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if an integer scalar.
+#' @seealso \code{\link{is_numeric_scalar}}
+#' @author Andrew Roberts
+is_integer_scalar <- function(x) {
+  is_numeric_scalar(x) && x == as.integer(x)
+}
+
+
 #' Check if an R object is a named vector, with all names provided (empty
 #' strings are not allowed).
 #' 

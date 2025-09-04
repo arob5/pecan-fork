@@ -31,7 +31,10 @@
 #' This interface is a light wrapper around the model-specific write config
 #' function, which does the bulk of the work. The model is specified within
 #' the \code{settings} object, which is used to load the model package and 
-#' use the correct write config function. 
+#' use the correct write config function. At present, the convention for all
+#' of the model API function is to pass \code{...} arguments only to the 
+#' underlying core PEcAn functions (e.g., \code{PEcAn.utils::read.output}),
+#' when relevant. All arguments for the API functions are stated explicitly by name.
 #' 
 #' @param settings A PEcAn  settings list object.
 #' @param runtime_input A \code{RuntimeInput} object containing parameters, 
@@ -39,9 +42,9 @@
 #' \code{NULL} (default).
 #' @param run_id Unique identifier for the model run. If \code{NULL} (default),
 #'  one will be randomly generated.
-#' @param constraint_vars Character vector of variables to extract from the model output.
 #' @param append_run Logical; if \code{FALSE}, overwrites existing 
 #'  \code{runs.txt} file (default). If `TRUE`, appends run ID to the existing file.
+#' @param ... Additonal arguments currently not used.
 #'
 #' @returns Invisibly returns the run ID.
 #' @seealso \code{\link{make_runtime_input}}
@@ -54,7 +57,7 @@
 #' 
 #' @author Andrew Roberts
 #' @export
-prep_model_run <- function(settings, runtime_input=NULL, run_id=NULL, append_run=FALSE, ...) {
+prep_model_run <- function(settings, runtime_input=NULL, run_id=NULL, append_run=TRUE, ...) {
   
   # Ensure runtime inputs are in proper format.
   if(!is.null(runtime_input)) validate_runtime_input(runtime_input)
@@ -65,10 +68,14 @@ prep_model_run <- function(settings, runtime_input=NULL, run_id=NULL, append_run
   # Load model package.
   PEcAn.utils::load.modelpkg(settings$model$type)
   
+  # Create run and output directories.
+  dir.create(file.path(settings$rundir, run_id), recursive=TRUE)
+  dir.create(file.path(settings$modeloutdir, run_id), recursive=TRUE)
+  
   # Write model config to file.
   model_write_config <- paste0("write.config.", settings$model$type)
   do.call(model_write_config, args=list(defaults=settings$pfts,
-                                        trait.values=runtime_input$param,
+                                        trait.values=list(runtime_input$param), # TODO: temporary: SIPNET requires this to be a list
                                         IC=runtime_input$ic,
                                         settings=settings,
                                         run.id=run_id))
@@ -92,13 +99,17 @@ prep_model_run <- function(settings, runtime_input=NULL, run_id=NULL, append_run
 #'
 #' @param ensemble_input An \code{EnsembleInput} object (tibble) with columns 
 #'  \code{run_id}, \code{settings}, and optionally \code{runtime_input}.
-#' @param ... Additional arguments passed to each \code{prep_model_run()}.
+#' @param append_run logical, whether to append to or overwrite an existing 
+#'  \code{runs.txt} file. The runs within the current ensemble batch will always
+#'  be appended; this argument only controls whether existing runs before this
+#'  batch will be overwritten. Default is to append.
+#' @param ... Additional arguments currently not used.
 #'
 #' @return Invisibly returns a list of run IDs for the ensemble.
 #' @seealso \code{\link{prep_model_run}}, \code{\link{run_model_ensemble}}
 #' @author Andrew Roberts
 #' @export
-prep_model_ensemble_run <- function(ensemble_input, ...) {
+prep_model_ensemble_run <- function(ensemble_input, append_run=TRUE, ...) {
   
   validate_ensemble_input(ensemble_input)
   
@@ -113,12 +124,20 @@ prep_model_ensemble_run <- function(ensemble_input, ...) {
     )
   }
   
+  # Append to or replace existing "runs.txt" file. Runs within the current
+  # ensemble batch are always appended.
+  if(append_run) {
+    arg_list <- arg_list %>% mutate(append_run=TRUE)
+  } else {
+    arg_list <- arg_list %>% mutate(append_run = row_number() != 1L)
+  }
+  
   # Loop over rows of `ensemble_input`, calling `prep_model_run()` for each row.
   run_ids <- purrr::pmap(
-    ensemble_input[c("run_id", "settings", "runtime_input")],
-    function(run_id, settings, runtime_input, ...) {
+    arg_list[c("run_id", "settings", "runtime_input", "append_run")],
+    function(run_id, settings, runtime_input, append_run, ...) {
       prep_model_run(run_id=run_id, settings=settings, 
-                     runtime_input=runtime_input, append_run=TRUE, ...)
+                     runtime_input=runtime_input, append_run=append_run)
     }
   )
   
@@ -136,21 +155,22 @@ prep_model_ensemble_run <- function(ensemble_input, ...) {
 #' @param run_id Character: Run ID (optional).
 #' @param append_run Logical: Append run ID to \code{runs.txt} file (otherwise overwrites file).
 #' @param stop_on_error Logical: Stop if model runs encounter an error (default: \code{TRUE}).
-#' @param ... Additional arguments passed to \code{prep_model_run()}.
+#' @param ... Additional arguments currently not used.
 #'
 #' @return Invisibly returns the run ID.
 #' @seealso \code{\link{run_model_ensemble}}, \code{\link{prep_model_run}}
 #' @author Andrew Roberts
 #' @export
-run_model <- function(settings, runtime_input=NULL, run_id=NULL, append_run=FALSE, 
+run_model <- function(settings, runtime_input=NULL, run_id=NULL, append_run=TRUE, 
                       stop_on_error=TRUE, ...) {
 
   run_id <- prep_model_run(runtime_input=runtime_input, 
                            settings=settings, 
                            run_id=run_id, 
-                           append_run=append_run, ...)
+                           append_run=append_run)
   
-  PEcAn.workflow::start_model_runs(settings, stop_on_error=stop_on_error, write=FALSE)
+  PEcAn.workflow::start_model_runs(settings, stop.on.error=stop_on_error, 
+                                   write=FALSE)
   
   return(invisible(run_id))
 }
@@ -163,17 +183,17 @@ run_model <- function(settings, runtime_input=NULL, run_id=NULL, append_run=FALS
 #'
 #' @param ensemble_input An \code{EnsembleInput} object (see \code{prep_model_ensemble_run()}).
 #' @param stop_on_error Logical: Stop if any model run encounters an error (default: \code{TRUE}).
-#' @param ... Additional arguments passed to \code{prep_model_ensemble_run()}.
+#' @param ... Additional arguments currently not used.
 #'
 #' @return Invisibly returns a list of run IDs.
 #' @seealso \code{\link{run_model}}, \code{\link{prep_model_ensemble_run}}
 #' @author Andrew Roberts
 #' @export
-run_model_ensemble <- function(ensemble_input, stop_on_error=TRUE, ...) {
+run_model_ensemble <- function(ensemble_input, append_run=TRUE, stop_on_error=TRUE, ...) {
   
-  run_ids <- prep_model_ensemble_run(ensemble_input, ...)
+  run_ids <- prep_model_ensemble_run(ensemble_input, append_run=append_run)
   PEcAn.workflow::start_model_runs(ensemble_input$settings[[1]], 
-                                   stop_on_error=stop_on_error, write=FALSE)
+                                   stop.on.error=stop_on_error, write=FALSE)
 
   return(invisible(run_ids))
 }
@@ -192,11 +212,13 @@ run_model_ensemble <- function(ensemble_input, stop_on_error=TRUE, ...) {
 #' @param ... Additional arguments to \code{PEcAn.utils::read.output()}.
 #'
 #' @return Returns model output as read by \code{PEcAn.utils::read.output}.
+#'         An attribute named \code{run_id} is set to the character run ID
+#'         identifying the model run.
 #' @seealso \code{\link{run_model}}, \code{\link{run_model_ensemble_and_read_output}}
 #' @author Andrew Roberts
 #' @export
 run_model_and_read_output <- function(settings, runtime_input=NULL, run_id=NULL, 
-                                      append_run=FALSE, stop_on_error=TRUE, 
+                                      append_run=TRUE, stop_on_error=TRUE, 
                                       output_vars=NULL, ...) {
   
   run_id <- run_model(settings=settings,
@@ -208,6 +230,8 @@ run_model_and_read_output <- function(settings, runtime_input=NULL, run_id=NULL,
   run_output_path <- file.path(settings$modeloutdir, run_id)
   model_output <- PEcAn.utils::read.output(run_id, outdir=run_output_path, 
                                            variables=output_vars, ...)
+  attr(model_output, "run_id") <- run_id
+  
   return(model_output)
 }
 
@@ -228,16 +252,17 @@ run_model_and_read_output <- function(settings, runtime_input=NULL, run_id=NULL,
 #' @author Andrew Roberts
 #' @export
 run_model_ensemble_and_read_output <- function(ensemble_input, stop_on_error=TRUE,
-                                               variables=NULL, ...) {
+                                               variables=NULL, append_run=TRUE, ...) {
 
   # Execute ensemble runs.
-  run_ids <- run_model_ensemble(ensemble_input, stop_on_error=stop_on_error)
+  run_ids <- run_model_ensemble(ensemble_input, append_run=append_run, 
+                                stop_on_error=stop_on_error)
   
   # Read output into list.
-  run_output_path <- file.path(settings$modeloutdir, run_id)
-  model_ensemble_output <- lapply(run_ids, function(run_id) PEcAn.utils::read.output(run_id, 
-                                                                                     outdir=run_output_path, 
-                                                                                     variables=variables, ...))
+  model_ensemble_output <- lapply(run_ids, 
+                                  function(run_id) PEcAn.utils::read.output(run_id, 
+                                                                            outdir=output_path(ensemble_input, run_id), 
+                                                                            variables=variables, ...))
   names(model_ensemble_output) <- run_ids
   
   return(model_ensemble_output)
