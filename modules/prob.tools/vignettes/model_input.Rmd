@@ -12,6 +12,7 @@ source(file.path(code_dir, "utils.r"))
 source(file.path(fwd_dir, "model_input.r"))
 source(file.path(fwd_dir, "ensemble_model_input.r"))
 source(file.path(fwd_dir, "ensemble_input_list.r"))
+source(file.path(fwd_dir, "ensemble_input_table.r"))
 ```
 
 
@@ -77,7 +78,7 @@ input1 <- ModelInput(param = c(a=1, b=2),
 input2 <- ModelInput(param = c(a=10, b=20),
                      data_path = "path/to/data2")
 
-ens_input <- EnsembleInputList(list(input1, input2))
+ens_input <- EnsembleInput(list(input1, input2))
 print(ens_input)
 ```
 
@@ -117,19 +118,44 @@ sets default run IDs.
 run_ids(ens_input)
 ```
 
-The `length` method for an `EnsembleInput` is defined so that it returns the
-total number of runs.
+The number of runs and number of slots can be queried using `n_runs()`
+and `n_slots()`. The `dim` method returns a tuple containing these two numbers.
 
 ```{r}
-length(ens_input)
+n_runs(ens_input)
+n_slots(ens_input)
+dim(ens_input)
 ```
 
 ## Table Representation
-```{r}
 
+The ensemble input can alternatively be stored in a table, with one row per 
+model input (i.e., one row per run). The column name prefixes `slot_`
+and `metadata_` are used to identify slot and metadata columns, respectively.
+A special column named `run_id` stores the associated run IDs. All metadata
+and slot columns are stored as "tibble" list columns, which allows storing
+arbitrary structured objects.
+
+
+```{r}
+ens_input <- as_ensemble_input_table(ens_input)
+
+print(ens_input)
+print(class(ens_input))
 ```
 
+The same methods for accessing slot names, metadata names, and run IDs work when 
+the ensemble input is in the table format.
 
+```{r}
+slot_names(ens_input)
+metadata_names(ens_input)
+run_ids(ens_input)
+
+n_runs(ens_input)
+n_slots(ens_input)
+dim(ens_input)
+```
 
 
 

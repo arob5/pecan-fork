@@ -85,12 +85,6 @@ as_ensemble_input_list.EnsembleInputList <- function(x, ...) {
 }
 
 
-# Number of runs
-length.EnsembleInputList <- function(x, ...) {
-  length(x$inputs)
-}
-
-
 run_ids.EnsembleInputList <- function(x, ...) {
   names(x$inputs)
 }

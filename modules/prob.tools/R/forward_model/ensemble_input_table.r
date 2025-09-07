@@ -1,5 +1,9 @@
 # forward/ensemble_input_table.r
 
+# Constants
+SLOT_PREFIX <- "slot_"
+METADATA_PREFIX <- "metadata_"
+
 #' Construct ensemble model input in table format
 #' 
 #' Constructs an object of class \code{EnsembleInputTable}, which is a 
@@ -40,14 +44,19 @@ EnsembleInput.tbl_df <- function(input_table, slot_names=NULL) {
   metadata_names <- setdiff(names(input_table), c("run_id", slot_names))
   
   # Tag slot and metadata columns
-  input_table <- input_table %>% rename_with(~paste0("slot_", .x), all_of(slot_names))
-  input_table <- input_table %>% rename_with(~paste0("metadata_", .x), all_of(metadata_names))
+  input_table <- input_table %>% rename_with(~paste0(SLOT_PREFIX, .x), all_of(slot_names))
+  input_table <- input_table %>% rename_with(~paste0(METADATA_PREFIX, .x), all_of(metadata_names))
   
-  obj <- structure(input_table,
-                   class=c("EnsembleInputTable", "EnsembleInput"))
-  validate_ensemble_input_table(obj)
+  input_table <- set_ensemble_input_table_class(input_table)
+  validate_ensemble_input_table(input_table)
   
-  return(obj)
+  return(input_table)
+}
+
+
+set_ensemble_input_table_class <- function(obj) {
+  class(obj) <- c("EnsembleInputTable", "EnsembleInput", class(tibble::tibble()))
+  obj
 }
 
 
@@ -61,7 +70,7 @@ validate_ensemble_input_table <- function(obj) {
     stop("`obj` is not an `EnsembleInputTable` object.")
   }
   
-  if(!tibble::is.tibble(obj)) {
+  if(!tibble::is_tibble(obj)) {
     stop("EnsembleInputTable must be a tibble.")
   }
   
@@ -70,8 +79,8 @@ validate_ensemble_input_table <- function(obj) {
   }
   
   tagged_cols <- c("run_id", 
-                   .get_col_block(x, "slot_", strip_prefix=FALSE),
-                   .get_col_block(x, "metadata_", strip_prefix=FALSE))
+                   .get_col_block(obj, SLOT_PREFIX, strip_prefix=FALSE),
+                   .get_col_block(obj, METADATA_PREFIX, strip_prefix=FALSE))
   invalid_cols <- setdiff(names(obj), tagged_cols)
     
   if(length(invalid_cols) > 0L) {
@@ -86,12 +95,12 @@ validate_ensemble_input_table <- function(obj) {
 
 # Returns character(0) if there are no slot columns.
 slot_names.EnsembleInputTable <- function(x, ...) {
-  .get_col_block(x, "slot_", strip_prefix=TRUE)
+  .get_col_block(x, SLOT_PREFIX, strip_prefix=TRUE)
 }
 
 # Returns character(0) if there are no slot columns.
 metadata_names.EnsembleInputTable <- function(x, ...) {
-  .get_col_block(x, "metadata_", strip_prefix=TRUE)
+  .get_col_block(x, METADATA_PREFIX, strip_prefix=TRUE)
 }
 
 
@@ -113,13 +122,35 @@ as_ensemble_input_table.EnsembleInputTable <- function(x, ...) {
 
 
 as_ensemble_input_table.EnsembleInputList <- function(x, ...) {
-  x
-}
+  
+  all_slot_names <- slot_names(x)
+  all_metadata_names <- metadata_names(x)
+  all_run_ids <- run_ids(x)
+  model_input_list <- x$inputs
+  
+  # Create list of row information. 
+  make_row <- function(run_id) .make_ensemble_input_table_row(run_id, 
+                                                              model_input_list, 
+                                                              all_slot_names, 
+                                                              all_metadata_names)
+  row_list <- lapply(all_run_ids, make_row) 
+  
+  # run_id is a character column; all other columns default to list column.
+  tbl <- tibble::tibble(run_id=all_run_ids)
 
-
-# Number of runs
-length.EnsembleInputTable <- function(x, ...) {
-  nrow(x)
+  for(slot_col in all_slot_names) {
+    slot_col_with_prefix <- paste0(SLOT_PREFIX, slot_col)
+    tbl[[slot_col_with_prefix]] <- lapply(row_list, function(x) x[[slot_col]])
+  }
+  
+  for(metadata_col in all_metadata_names) {
+    metadata_col_with_prefix <- paste0(METADATA_PREFIX, metadata_col)
+    tbl[[metadata_col_with_prefix]] <- lapply(row_list, function(x) x[[metadata_col]])
+  }
+  
+  tbl <- set_ensemble_input_table_class(tbl)
+  validate_ensemble_input_table(tbl)
+  return(tbl)
 }
 
 
@@ -157,22 +188,26 @@ run_ids.EnsembleInputTable <- function(x, ...) {
 }
 
 
-.make_ensemble_input_table_row <- function(run_id, slot_names, metadata_names,
-                                           input_list, metadata_list) {
+.make_ensemble_input_table_row <- function(run_id, input_list, slot_names, 
+                                           metadata_names) {
+  
+  model_input <- input_list[[run_id]]
+  slots <- slots(model_input)
+  metadata <- metadata(model_input)
   
   row_slots <- lapply(slot_names, 
                   function(nm) {
-                    if(nm %in% names(input_list)) input_list[[nm]] else NA
+                    if(nm %in% names(slots)) slots[[nm]] else NA
                   })
   
   row_metadata <- lapply(metadata_names, 
                     function(nm) {
-                      if(nm %in% names(metadata_list)) metadata_list[[nm]] else NA
+                      if(nm %in% names(metadata)) metadata[[nm]] else NA
                     })
   
   names(row_slots) <- slot_names
   names(row_metadata) <- metadata_names
-  c(list(run_id=run_id), slots, meta) # Return list
+  c(row_slots, row_metadata)
 }
 
 
