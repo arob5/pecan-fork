@@ -1,0 +1,135 @@
+---
+title: "model_input"
+output: html_document
+---
+
+```{r}
+base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
+code_dir <- file.path(base_dir, "R")
+fwd_dir <- file.path(code_dir, "forward_model")
+
+source(file.path(code_dir, "utils.r"))
+source(file.path(fwd_dir, "model_input.r"))
+source(file.path(fwd_dir, "ensemble_model_input.r"))
+source(file.path(fwd_dir, "ensemble_input_list.r"))
+```
+
+
+# Representing a Single Model Input
+
+The `ModelInput` class encodes the set of inputs required to run a model.
+It is a simple container with elements *slots* and *metadata*, both of which
+are named lists (or empty lists). The slots correspond to different pieces of 
+the input (e.g., parameters, initial conditions, a filepath to data, etc.)
+
+Let's start by considering a model input consisting of two slots: 
+(1) `param`, a vector of scalar parameters, and (2) `data_path`, a file path 
+to some required input data.
+
+```{r}
+input <- ModelInput(param = c(a=1, b=2),
+                    data_path = "path/to/data",
+                    metadata = list(input_id = 1L))
+print(input)
+print(class(input))
+```
+
+Helper functions and methods are defined to extract slots, metadata, and their 
+names.
+
+```{r}
+slot_names(input)
+metadata_names(input)
+slots(input)
+metadata(input)
+```
+
+Attempting to create unnamed slots (or metadata) will result in an error,
+
+```{r}
+input <- try(ModelInput(param=2, "unnamed_slot"))
+print(input)
+```
+but empty inputs are allowed.
+
+```{r}
+input <- ModelInput()
+print(input)
+```
+
+# Representing a Collection of Model Inputs
+
+A collection of model inputs can be combined into an `EnsembleInput` object.
+This is the primary building block for constructing vectorized, or *ensemble*
+model runs. `EnsembleInput` objects can be stored in three different
+formats, which each may be preferred in certain contexts. A common constructor
+can be used to generate these objects in the three formats, and methods are 
+provided to easily convert between the three. We discuss each representation
+below.
+
+## List Representation
+
+The simplest data structure used to encode `EnsembleInput` is a list of `ModelInput` objects.
+
+```{r}
+input1 <- ModelInput(param = c(a=1, b=2),
+                     data_path = "path/to/data")
+input2 <- ModelInput(param = c(a=10, b=20),
+                     data_path = "path/to/data2")
+
+ens_input <- EnsembleInputList(list(input1, input2))
+print(ens_input)
+```
+
+
+The inputs are not required to all have the same input slots. We can access
+the union of the slots across all inputs, or a list of the slots for each input.
+
+```{r}
+input1 <- ModelInput(param = c(a=1, b=2),
+                     data_path = "path/to/data",
+                     metadata=list(extra_info = "info"))
+
+input2 <- ModelInput(param = c(a=10, b=20),
+                     data_path = "path/to/data2",
+                     ic = list(ic1=0, ic2=100, ic3=50))
+
+ens_input <- EnsembleInput(list(input1, input2))
+print(ens_input) # By default, prints the union.
+
+# Print union of slot names
+slot_names(ens_input)
+
+# Print list of slot names for each input
+slot_names(ens_input, unique_only=FALSE)
+
+# Same deal with metadata
+metadata_names(ens_input)
+metadata_names(ens_input, unique_only=FALSE)
+```
+
+Each input/run is associated with a run ID. We could have specified these 
+above by passing in a named list `list(run1=input1, run2=input2)` to the 
+`EnsembleInput` constructor. If no names are specified, the constructor 
+sets default run IDs.
+
+```{r}
+run_ids(ens_input)
+```
+
+The `length` method for an `EnsembleInput` is defined so that it returns the
+total number of runs.
+
+```{r}
+length(ens_input)
+```
+
+## Table Representation
+```{r}
+
+```
+
+
+
+
+

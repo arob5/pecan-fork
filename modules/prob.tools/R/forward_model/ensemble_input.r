@@ -1,6 +1,5 @@
 # forward_model/ensemble_inputs.r
 
-
 #' Create an \code{EnsembleInput} Object
 #'
 #' Constructs an \code{EnsembleInput} object, a tidy tibble-based S3 class 

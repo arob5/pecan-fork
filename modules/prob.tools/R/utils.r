@@ -49,14 +49,14 @@ is_integer_scalar <- function(x) {
 #' strings are not allowed).
 #' 
 #' @param x An R object
-#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
 #' @returns logical, \code{TRUE} if a vector with all names provided. 
 #' @author Andrew Roberts
-is_named_numeric_vector <- function(x, check_unique=TRUE) {
+is_named_numeric_vector <- function(x, check_unique_names=TRUE) {
   is.numeric(x) &&
   is.atomic(x) &&
   !is.array(x) &&
-  has_names(x, check_unique)
+  has_names(x, check_unique_names)
 }
 
 
@@ -64,14 +64,30 @@ is_named_numeric_vector <- function(x, check_unique=TRUE) {
 #' strings are not allowed).
 #' 
 #' @param x An R object
-#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
 #' @returns logical, \code{TRUE} if a list with all names provided. 
 #' @author Andrew Roberts
-is_named_list <- function(x, check_unique=TRUE) {
+is_named_list <- function(x, check_unique_names=TRUE) {
   is.list(x) &&
   length(x) > 0 &&
-  has_names(x, check_unique)
+  has_names(x, check_unique_names)
 }
+
+
+#' Check if named or empty list.
+#' 
+#' Returns \code{TRUE} if \code{is_named_list(x, check_unique_names)} is TRUE,
+#' or if \code{x} is an empty list (i.e., list of length zero).
+#' 
+#' @param x An R object
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @returns logical, \code{TRUE} if a named list or an empty list. 
+#' @author Andrew Roberts
+is_named_or_empty_list <- function(x, check_unique_names=TRUE) {
+  (is.list(x) && length(x) == 0L) ||
+    is_named_list(x, check_unique_names)
+}
+
 
 #' Check that R object has full set of names
 #' 
@@ -81,15 +97,15 @@ is_named_list <- function(x, check_unique=TRUE) {
 #' to not have names.
 #' 
 #' @param x An R object
-#' @param check_unique logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
 #' 
 #' @returns logical, \code{TRUE} if object has full set of (unique) names.
 #' @author Andrew Roberts
-has_names <- function(x, check_unique=TRUE) {
+has_names <- function(x, check_unique_names=TRUE) {
   !is.null(names(x)) &&
   length(names(x)) == length(x) &&
   all(nzchar(names(x))) && # Ensure no "" names.
-  (!check_unique || !anyDuplicated(names(x)))
+  (!check_unique_names || !anyDuplicated(names(x)))
 }
 
 
