@@ -1,0 +1,43 @@
+---
+title: "broadcasting"
+output: html_document
+---
+
+```{r}
+base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
+code_dir <- file.path(base_dir, "R")
+fwd_dir <- file.path(code_dir, "forward_model")
+
+source(file.path(code_dir, "utils.r"))
+source(file.path(fwd_dir, "broadcast_rules.r"))
+```
+
+
+```{r}
+# Run a different initial condition (ic) ensemble (with 2 ensemble members) at each site.
+slots_ic <- list(
+  site = list("s1", "s2", "s3"),
+  ic = list("ic1_1", "ic2_1", "ic3_1", "ic1_2", "ic2_2", "ic3_2")
+)
+
+lens <- vapply(slots_ic, length, integer(1))
+idcs <- rule_recycle(lens)
+visualize_slot_grid(idcs, names(slots_ic))
+
+
+# Same as above, but now vectorize each run over aparameter ensemble (spatially invariant)
+slots <- list(
+  site = list("s1", "s2", "s3"),
+  ic = list("ic1_1", "ic2_1", "ic3_1", "ic1_2", "ic2_2", "ic3_2"),
+  param = list("p1", "p2")
+)
+
+my_rule <- get_composite_rule(
+  groups = list(c(1, 2), 3), # group slots: (site, ic), (param)
+  rules  = list(rule_recycle, rule_match)
+)
+
+lens <- vapply(slots, length, integer(1))
+idcs <- my_rule(lens)
+visualize_slot_grid(idcs, names(slots))
+```

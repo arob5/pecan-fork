@@ -30,6 +30,22 @@ is_numeric_scalar <- function(x) {
 }
 
 
+#' Check if an R object can be safely converted to integer
+#' 
+#' Returns \code{TRUE} if the input value is of integer atomic type,
+#' or double type but can be converted to an integer without loss of 
+#' information (e.g., 2.0). Returns \code{FALSE} if any values are \code{NA}.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if is integer-like. 
+#' @author Andrew Roberts
+is_integer_like <- function(x) {
+  !anyNA(x) &&
+    (is.integer(x) || is.double(x)) &&
+    all(x %% 1 == 0)
+}
+
+
 #' Check if an R object is an integer scalar
 #' 
 #' The object is considered an integer scalar if it is a numeric scalar and
@@ -41,7 +57,7 @@ is_numeric_scalar <- function(x) {
 #' @seealso \code{\link{is_numeric_scalar}}
 #' @author Andrew Roberts
 is_integer_scalar <- function(x) {
-  is_numeric_scalar(x) && x == as.integer(x)
+  is_numeric_scalar(x) && is_integer_like(x)
 }
 
 
@@ -86,6 +102,17 @@ is_named_list <- function(x, check_unique_names=TRUE) {
 is_named_or_empty_list <- function(x, check_unique_names=TRUE) {
   (is.list(x) && length(x) == 0L) ||
     is_named_list(x, check_unique_names)
+}
+
+
+#' Check for integer-like vector with non-negative entries
+#' 
+#' @param x An R object
+#' @author Andrew Roberts
+is_nonneg_integer_vector <- function(x) {
+  is.atomic(x) &&
+    is_integer_like(x) &&
+    all(x >= 0)
 }
 
 

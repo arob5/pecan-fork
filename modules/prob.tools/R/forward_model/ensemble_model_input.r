@@ -104,26 +104,6 @@ dim.EnsembleInput <- function(x, ...) {
 }
 
 
-#' Construct a broadcast-based ensemble model input
-#'
-#' @param slots A named list of slot value sets.
-#' @param rule A rule function that defines broadcasting,
-#'   returning an index matrix.
-#' @return An object of class \code{EnsembleInputBroadcast}.
-#' @export
-EnsembleInputBroadcast <- function(slots, rule) {
-  stopifnot(is.list(slots), is.function(rule))
-  lens <- vapply(slots, length, integer(1))
-  idx <- rule(lens)
-  structure(
-    list(slots=slots, rule=rule, index=idx),
-    class = c("EnsembleInputBroadcast", "EnsembleInput")
-  )
-}
-
-
-
-
 #
 # Old
 #
