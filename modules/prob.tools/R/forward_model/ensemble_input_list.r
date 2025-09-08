@@ -117,18 +117,3 @@ metadata_names.EnsembleInputList <- function(x, unique_only=TRUE, ...) {
   else metadata_names_per_run
 }
 
-
-#' @export
-print.EnsembleInputList <- function(x, ...) {
-  cat("<EnsembleInputList>\n")
-  cat(" Number of runs:", length(x), "\n")
-  
-  slot_nm <- slot_names(x)
-  if(length(slot_nm) == 0L) {
-    cat("  (no slots)\n")
-  } else {
-    cat(" slots:", paste(slot_nm, collapse = ", "), "\n")
-  }
-  
-  invisible(x)
-}

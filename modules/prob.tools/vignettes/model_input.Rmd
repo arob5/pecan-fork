@@ -4,15 +4,19 @@ output: html_document
 ---
 
 ```{r}
+library(dplyr)
+
 base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
 code_dir <- file.path(base_dir, "R")
 fwd_dir <- file.path(code_dir, "forward_model")
 
 source(file.path(code_dir, "utils.r"))
+source(file.path(fwd_dir, "broadcast_rules.r"))
 source(file.path(fwd_dir, "model_input.r"))
 source(file.path(fwd_dir, "ensemble_model_input.r"))
 source(file.path(fwd_dir, "ensemble_input_list.r"))
 source(file.path(fwd_dir, "ensemble_input_table.r"))
+source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
 ```
 
 
@@ -79,7 +83,7 @@ input2 <- ModelInput(param = c(a=10, b=20),
                      data_path = "path/to/data2")
 
 ens_input <- EnsembleInput(list(input1, input2))
-print(ens_input)
+summary(ens_input)
 ```
 
 
@@ -96,7 +100,7 @@ input2 <- ModelInput(param = c(a=10, b=20),
                      ic = list(ic1=0, ic2=100, ic3=50))
 
 ens_input <- EnsembleInput(list(input1, input2))
-print(ens_input) # By default, prints the union.
+summary(ens_input)
 
 # Print union of slot names
 slot_names(ens_input)
@@ -140,7 +144,7 @@ arbitrary structured objects.
 ```{r}
 ens_input <- as_ensemble_input_table(ens_input)
 
-print(ens_input)
+summary(ens_input)
 print(class(ens_input))
 ```
 
@@ -156,6 +160,64 @@ n_runs(ens_input)
 n_slots(ens_input)
 dim(ens_input)
 ```
+An `EnsembleInputTable` object is a tibble, so we can dispatch standard tibble
+and data.frame methods for manipulating the table.
+
+```{r}
+print(ens_input)
+```
+
+## Broadcast Representation
+
+The downside of both the table and list representations are they both
+store redundant information when some slot values are utilized in multiple runs.
+The broadcast representation addresses this shortcoming, storing only a unique
+set of values for each slot, along with a broadcast rule that encodes how to 
+construct the runs from the slot values.
+
+```{r}
+slots <- list(
+  site = list("s1", "s2", "s3"),
+  ic = list("ic1_1", "ic2_1", "ic3_1", "ic1_2", "ic2_2", "ic3_2"),
+  param = list("p1", "p2")
+)
+
+# Create new broadcast rule
+rule <- get_composite_rule(groups=list(c(1,2), c(3)), # slot groups: (site, ic), (param)
+                           rules=list(rule_recycle, rule_match))
+
+ens_input <- EnsembleInput(rule, slots)
+
+summary(ens_input)
+print(class(ens_input))
+```
+
+The runs are internally defined by an matrix of indices.
+
+```{r}
+ens_input$idx_mat
+```
+
+This is easier to understand with some text labels attached in place of the 
+integer indices.
+
+```{r}
+get_labeled_idx_mat(ens_input)
+```
+
+We can convert to an `EnsembleInputTable` to fill the table with the actual 
+slot values, rather than string labels for each value. 
+
+```{r}
+tbl <- as_ensemble_input_table(ens_input)
+
+summary(tbl)
+head(tbl)
+```
+
+
+
+
 
 
 

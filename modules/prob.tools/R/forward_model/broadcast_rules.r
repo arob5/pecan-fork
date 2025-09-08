@@ -220,8 +220,58 @@ visualize_slot_grid <- function(idx_mat, slot_names) {
   char_mat <- Map(name_map, as.data.frame(idx_mat), slot_names)
   name_mat <- do.call(cbind, char_mat)
   dim(name_mat) <- dim(idx_mat) # In case result was flattened to vector
+  colnames(name_mat) <- slot_names
+  
   
   return(name_mat)
+}
+
+
+#' Instantiate an index matrix with slot values, producing a tibble
+#'
+#' For each row of idx_mat, uses indices to pull values from slots, constructing
+#' a tibble (one column per slot). Handles structured (list-like) values as list columns.
+#'
+#' @param idx_mat Integer matrix, with each row an index tuple for the slots.
+#' @param slots List of length ncol(idx_mat), each element is a list or vector of possible values for that slot.
+#' @return A tibble where each row is a combination of slot values, and list-like slot values become list columns.
+#' @examples
+#' library(tibble)
+#' idx <- recycle_indices(c(3, 2))
+#' slots <- list(
+#'   c("A", "B", "C"),
+#'   list(1:2, 3:4) # slot 2 as a list column!
+#' )
+#' instantiate_slot_grid(idx, slots)
+#' @export
+instantiate_slot_grid <- function(idx_mat, slots) {
+  stopifnot(is.matrix(idx_mat))
+  stopifnot(is_integer_like(idx_mat))
+  stopifnot(is.list(slots))
+  stopifnot(all(vapply(slots, is.list, logical(1))))
+  stopifnot(ncol(idx_mat) == length(slots))
+  
+  n_slots <- ncol(idx_mat)
+  n_combs <- nrow(idx_mat)
+  slot_colnames <- names(slots)
+  if(is.null(slot_colnames)) slot_colnames <- paste0("slot", seq_len(n_slots))
+  
+  create_column <- function(j) {
+    vals <- slots[[j]]
+    idxs <- idx_mat[,j]
+    
+    # If vals is a list, always create a list column
+    if (is.list(vals)) {
+      lapply(idxs, function(idx) vals[[idx]]) # allow for slots of length 0
+    } else {
+      # Vector - extract using standard vector indexing
+      vals[idxs]
+    }
+  }
+  
+  cols <- lapply(seq_len(n_slots), create_column)
+  names(cols) <- slot_colnames
+  tibble::as_tibble(cols)
 }
 
 

@@ -154,25 +154,21 @@ as_ensemble_input_table.EnsembleInputList <- function(x, ...) {
 }
 
 
-run_ids.EnsembleInputTable <- function(x, ...) {
-  x$run_id
+as_ensemble_input_table.EnsembleInputBroadcast <- function(x, ...) {
+  tbl <- instantiate_slot_grid(x$idx_mat, x$slots)
+  tbl <- tbl %>% rename_with(~paste0(SLOT_PREFIX, .x))
+  tbl <- tbl %>% mutate(run_id = run_ids(x))
+  
+  tbl <- set_ensemble_input_table_class(tbl)
+  validate_ensemble_input_table(tbl)
+  
+  return(tbl)
 }
 
 
-#' #' @export
-#' print.EnsembleInputList <- function(x, ...) {
-#'   cat("<EnsembleInputList>\n")
-#'   cat(" Number of runs:", length(x), "\n")
-#'   
-#'   slot_nm <- slot_names(x)
-#'   if(length(slot_nm) == 0L) {
-#'     cat("  (no slots)\n")
-#'   } else {
-#'     cat(" slots:", paste(slot_nm, collapse = ", "), "\n")
-#'   }
-#'   
-#'   invisible(x)
-#' }
+run_ids.EnsembleInputTable <- function(x, ...) {
+  x$run_id
+}
 
 
 # x: data.frame/tibble
