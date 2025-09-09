@@ -5,8 +5,8 @@
 #' Creates a new \code{ModelInput} object, which is a container for
 #' model inputs (called "slots") and optional metadata. Each slot is
 #' a named element (e.g., \code{param}, \code{ic}, \code{driver})
-#' storing an R object required by the model. Metadata can be used
-#' for provenance, units, or other information.
+#' storing an R object. Metadata can be used for provenance, units, 
+#' or other information.
 #'
 #' @param ... Named arguments representing the slots required by a model.
 #'   For example, \code{param}, \code{ic}, \code{driver}.
@@ -44,6 +44,9 @@ ModelInput <- function(..., metadata=list()) {
 
 #' Check if object inherits from \code{ModelInput}
 #' 
+#' @param x An object
+#' @returns Logical, whether or not the object inherits from \code{ModelInput}.
+#' 
 #' @seealso \code{\link{ModelInput}}
 #' @author Andrew Roberts
 #' @export
@@ -52,20 +55,35 @@ is_model_input <- function(x) {
 }
 
 
+#' Throw error if object is not \code{ModelInput}
+#' 
+#' @param x An object
+#' @returns Invisibly returns \code{TRUE} if \code{x} is a \code{ModelInput}.
+#'  Otherwise throws an error.
+#' 
+#' @seealso \code{\link{ModelInput}}
+#' @author Andrew Roberts
+#' @export
 check_model_input_type <- function(x) {
-  if (!is_model_input(x)) {
-    stop("`x` is not a ModelInput object.")
-  }
+  if(!is_model_input(x)) stop("`x` is not a ModelInput object.")
+  
+  invisible(TRUE)
 }
 
 
 #' Validate ModelInput
 #'
-#' Placeholder for model-specific validation logic.
-#' By default, checks that \code{slots} is a named list.
+#' Validates the general structure of a \code{ModelInput} object. Does not 
+#' perform validation for the actual values stored in the object, which is
+#' the job of model-specific validation.
+#'
+#' @details
+#' Must have elements \code{slots} and \code{metadata}. Both of these must
+#' be named lists, or empty lists. 
 #'
 #' @param x A \code{ModelInput} object.
-#' @return Invisibly returns \code{x}, or throws an error if invalid.
+#' @return Invisibly returns \code{TRUE} if validation tests are passed, 
+#'  or throws an error if invalid.
 #' @export
 validate_model_input <- function(x) {
   
@@ -87,20 +105,21 @@ validate_model_input <- function(x) {
     stop("`ModelInput$metadata` must be a named list with unique names, or empty list.")
   }
   
-  invisible(x)
+  invisible(TRUE)
 }
 
 
 #' Slot Names Generic
 #'
 #' Returns the names of slots (input fields) present in a model input object.
-#' Works for both single \code{ModelInput} objects and ensemble inputs.
+#' Defined for both \code{ModelInput} and \code{EnsembleInput}.
 #'
 #' @param x A \code{ModelInput} or \code{EnsembleInput} object.
 #' @param ... Further arguments passed to methods.
 #'
-#' @return A character vector of slot names if \code{unique_only = TRUE},
-#'   otherwise a list of character vectors (per run).
+#' @return Typically a character vector of slot names. See specific methods 
+#'  for details.
+#' @seealso \code{\link{slot_names.ModelInput}}, \code{\link{slot_names.EnsembleInput}}
 #' @export
 slot_names <- function(x, ...) {
   UseMethod("slot_names")
@@ -109,11 +128,19 @@ slot_names <- function(x, ...) {
 
 #' @export
 slot_names.default <- function(x, ...) {
-  stop("slot_names() is not implemented for objects of class ", 
-       paste(class(x), collapse = "/"))
+  raise_default_method_error(x, "slot_names")
 }
 
 
+#' Return slot names of a ModelInput
+#'
+#' Returns the names of slots (input fields) present in a model input object.
+#'
+#' @param x A \code{ModelInput}.
+#' @param ... Not used.
+#'
+#' @return character vector of slot names.
+#' @seealso \code{\link{slot_names.EnsembleInput}}
 #' @export
 slot_names.ModelInput <- function(x, ...) {
   names(x$slots)
@@ -123,18 +150,15 @@ slot_names.ModelInput <- function(x, ...) {
 #' Number of Slots Generic
 #'
 #' Returns the number of slots (input fields) present in a model input object.
-#' Works for both single \code{ModelInput} objects and ensemble inputs.
-#' 
-#' @details
-#' In the case of a \code{EnsembleInput} object, the individual \code{ModelInput}
-#' objects may have different numbers of slots. In this case, the returned
-#' value is the total number of unique slots, which corresponds to the number
-#' of columns in the corresponding \code{EnsembleInputTable}.
+#' Defined for both single \code{ModelInput} and \code{EnsembleInput}.
 #'
 #' @param x A \code{ModelInput} or \code{EnsembleInput} object.
 #' @param ... Further arguments passed to methods.
 #'
 #' @return Integer, number of slots.
+#' @seealso \code{\link{n_slots.ModelInput}}, \code{\link{n_slots.EnsembleInput}}
+#' 
+#' @author Andrew Roberts
 #' @export
 n_slots <- function(x, ...) {
   UseMethod("n_slots")
@@ -143,21 +167,38 @@ n_slots <- function(x, ...) {
 
 #' @export
 n_slots.default <- function(x, ...) {
-  stop("n_slots() is not implemented for objects of class ", 
-       paste(class(x), collapse = "/"))
+  raise_default_method_error(x, "n_slots")
 }
 
 
+#' Return Number of Slots in a ModelInput
+#'
+#' Returns the number of slots (input fields) present in a \code{ModelInput} object.
+#' This is the length of the \code{slots} field (a list) stored in the object.
+#'
+#' @param x A \code{ModelInput} object.
+#' @param ... Not used.
+#'
+#' @return Integer, number of slots. Throws error if \code{x} is not a
+#'  \code{ModelInput}.
+#' @seealso \code{\link{ModelInput}}, \code{\link{n_slots.EnsembleInput}}
+#'
+#' @author Andrew Roberts
 #' @export
 n_slots.ModelInput <- function(x, ...) {
   length(x$slots)
 }
 
 
-#' Extract slots from ModelInput
+#' Extract slots from a ModelInput
+#' 
+#' Returns the \code{slots} field (a named list) of a \code{ModelInput} object.
 #'
 #' @param x A \code{ModelInput} object.
-#' @return The \code{slots} list.
+#' @return The \code{slots} list. Throws error if \code{x} is not a
+#'  \code{ModelInput}.
+#'
+#' @author Andrew Roberts
 #' @export
 slots <- function(x) {
   check_model_input_type(x)
@@ -165,10 +206,15 @@ slots <- function(x) {
 }
 
 
-#' Extract metadata from ModelInput
+#' Extract metadata from a ModelInput
+#' 
+#' Returns the \code{metadata} field (a named list) of a \code{ModelInput} object.
 #'
 #' @param x A \code{ModelInput} object.
-#' @return The \code{metadata} list.
+#' @return The \code{metadata} list. Throws error if \code{x} is not a
+#'  \code{ModelInput}.
+#'
+#' @author Andrew Roberts
 #' @export
 metadata <- function(x) {
   check_model_input_type(x)
@@ -176,28 +222,38 @@ metadata <- function(x) {
 }
 
 
-#' Extract metadata names from ModelInput
+#' Metadata Names Generic
 #'
 #' @param x A \code{ModelInput} object.
-#' @return The names of the \code{metadata} list. Will be \code{NULL} if there 
-#'  is no metadata.
+#' @return Used to extract the names of metadata elements associated with model
+#'  input(s). See class-specific methods for specifics. If there is no metadata,
+#'  should return \code{character(0)}.
+#'  
+#' @sealso \code{\link{metadata_names.ModelInput}}
+#' 
+#' @author Andrew Roberts
 #' @export
 metadata_names <- function(x, ...) {
   UseMethod("metadata_names")
 }
 
 
+#' @export
 metadata_names.default <- function(x, ...) {
-  stop("method_names() is not implemented for objects of class ", 
-       paste(class(x), collapse = "/"))
+  raise_default_method_error(x, "metadata_names")
 }
 
 
-#' Extract metadata names from ModelInput
+#' Extract metadata names from a ModelInput
+#' 
+#' Returns the character vector of metadata names for a \code{ModelInput}
+#' object. These are the names of the \code{metadata} field.
 #'
 #' @param x A \code{ModelInput} object.
-#' @return The names of the \code{metadata} list. Will be \code{character(0)} if there 
-#'  is no metadata.
+#' @return The names of the \code{metadata} list. Will be \code{character(0)} 
+#'  if there is no metadata.
+#'  
+#' @author Andrew Roberts
 #' @export
 metadata_names.ModelInput <- function(x, ...) {
   nm <- names(x$metadata)
