@@ -1,4 +1,8 @@
-# prob.tools/R/utils.r
+# prob.tools/R/types.r
+
+# Helper functions for checking that R objects satisfy the requirements of
+# particular user-defined "types".
+
 
 #' Check if an R object is an atomic scalar
 #' 

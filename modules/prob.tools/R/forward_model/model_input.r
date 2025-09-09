@@ -34,11 +34,29 @@
 #' @export
 ModelInput <- function(..., metadata=list()) {
   slots <- list(...)
-
-  x <- structure(list(slots=slots, metadata=metadata),
-                 class = "ModelInput")
+  x <- .new_model_input(slots, metadata)
   validate_model_input(x)
+  
   return(x)
+}
+
+
+#' Internal constructor for ModelInput
+#' 
+#' Instantiates a \code{ModelInput} object. No validation is done in this
+#' function. See \code{\link{ModelInput}} for the public interface.
+#' 
+#' @param slots Named list, each element representing an input value for a different
+#'  input slot, with the names corresponding to the slot names.
+#' @param metadata Named list (or empty list) of metadata to store alongside
+#'   the slots.
+#' 
+#' @seealso \code{\link{ModelInput}}
+#' @author Andrew Roberts
+.new_model_input <- function(slots, metadata) {
+  
+  structure(list(slots=slots, metadata=metadata),
+            class = "ModelInput")
 }
 
 

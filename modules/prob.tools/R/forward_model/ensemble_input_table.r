@@ -27,20 +27,57 @@ METADATA_PREFIX <- "metadata_"
 #' columns; input slots are not required to be atomic, so the table columns
 #' in this representation must be able to store arbitrary structured objects.
 #'
-#' @param input_table A tibble (\code{df_tbl}). \code{NA} values are
-#'  interpreted as the respective run not having a slot for that respective column.
+#' @param input_table A tibble (\code{df_tbl}) or object that can be converted 
+#'  to a tibble. An \code{NA} value in the \code{(i,j)} entry is interpreted as 
+#'  run \code{i} not having an input in slot \code{j}.
 #' @param slot_names Optional, character vector specifying the column names of 
 #'  \code{input_table} that correspond to input slots.
+#'  
 #' @return An object of class \code{EnsembleInputTable}, inheriting from 
 #'  \code{EnsembleInput}.
 #' @export
 EnsembleInput.tbl_df <- function(input_table, slot_names=NULL) {
 
+  x <- .new_ensemble_input_table(input_table, slot_names)
+  validate_ensemble_input_table(x)
+  
+  return(x)
+}
+
+
+#' Internal constructor for EnsembleInputTable
+#' 
+#' Instantiates an \code{EnsembleInputTable} object. No validation is done in 
+#' this function. See \code{\link{EnsembleInput.tbl_df}} for the public interface
+#' and additional documentation.
+#' 
+#' @param input_table A tibble (\code{df_tbl}) or object that can be converted 
+#'  to a tibble. An \code{NA} value in the \code{(i,j)} entry is interpreted as 
+#'  run \code{i} not having an input in slot \code{j}.
+#' @param slot_names Optional, character vector specifying the column names of 
+#'  \code{input_table} that correspond to input slots.
+#' 
+#' @returns An object of class \code{EnsembleInputTable}, inheriting from 
+#'  \code{EnsembleInput}.
+#' 
+#' @seealso \code{\link{EnsembleInput}}
+#' @author Andrew Roberts
+.new_ensemble_input_table <- function(input_table, slot_names) {
+  
+  # Attempt conversion to tibble.
+  input_table <- tryCatch(
+    tibble::as_tibble(x),
+    error = function(e) {
+      stop("Conversion to tibble failed when trying to create EnsembleInputTable: ", e$message)
+    }
+  )
+  
   # Default run IDs.
   if(!("run_id" %in% names(input_table))) {
     input_table <- input_table %>% mutate(run_id=paste0("run_", dplyr::row_number()))
   }
   
+  # All non slot column and non run ID columns are interpreted as metadata.
   metadata_names <- setdiff(names(input_table), c("run_id", slot_names))
   
   # Tag slot and metadata columns
@@ -48,24 +85,55 @@ EnsembleInput.tbl_df <- function(input_table, slot_names=NULL) {
   input_table <- input_table %>% rename_with(~paste0(METADATA_PREFIX, .x), all_of(metadata_names))
   
   input_table <- set_ensemble_input_table_class(input_table)
-  validate_ensemble_input_table(input_table)
-  
   return(input_table)
 }
 
 
-set_ensemble_input_table_class <- function(obj) {
-  class(obj) <- c("EnsembleInputTable", "EnsembleInput", class(tibble::tibble()))
-  obj
+#' Defines class hierarchy for EnsembleInputTable
+#' 
+#' Given an R object, returns an updated version of the object where the 
+#' class attribute has been set to inherit directly from \code{EnsembleInputTable},
+#' followed by \code{EnsembleInputTable}, and then the classes which define 
+#' a \code{tibble}.
+#' 
+#' @param x An R object
+#' 
+#' @returns \code{x} with updated class attribute.
+#' 
+#' @author Andrew Roberts
+set_ensemble_input_table_class <- function(x) {
+  class(x) <- c("EnsembleInputTable", "EnsembleInput", class(tibble::tibble()))
+  x
 }
 
 
+#' Check if object inherits from \code{EnsembleInputTable}
+#' 
+#' @param x An object
+#' @returns Logical, whether or not the object inherits from \code{EnsembleInputTable}.
+#' 
+#' @author Andrew Roberts
+#' @export
 is_ensemble_input_table <- function(x) {
   is_ensemble_input(x) && inherits(x, "EnsembleInputTable")
 }
 
 
-validate_ensemble_input_table <- function(obj) {
+#' Validate an EnsembleInputTable
+#'
+#' Validates the general structure of a \code{EnsembleInputTable} object. 
+#'
+#' @details
+#' Must be a tibble and include a \code{run_id} column with unique values.
+#' All other columns must start with \code{slot_} or \code{metadata_}.
+#'
+#' @param x An object.
+#' @return Invisibly returns \code{TRUE} if validation tests are passed, 
+#'  or throws an error if invalid.
+#'  
+#' @author Andrew Roberts
+#' @export
+validate_ensemble_input_table <- function(x) {
   if(!is_ensemble_input_table(obj)) {
     stop("`obj` is not an `EnsembleInputTable` object.")
   }
@@ -76,6 +144,10 @@ validate_ensemble_input_table <- function(obj) {
   
   if(!("run_id" %in% names(obj))) {
     stop("`EnsembleInputTable$run_id` column is missing.")
+  }
+  
+  if(!dplyr::n_distinct(df$run_id) == nrow(df)) {
+    stop("`EnsembleInputTable$run_id` contains duplicate values.")
   }
   
   tagged_cols <- c("run_id", 
@@ -89,21 +161,68 @@ validate_ensemble_input_table <- function(obj) {
          paste(invalid_cols, collapse=", "))
   }
   
-  invisible(obj)
+  invisible(TRUE)
 }
 
 
-# Returns character(0) if there are no slot columns.
+#' Get input slot names
+#'
+#' Returns the names of slots (input fields) present in the \code{ModelInput}
+#' objects making up the ensemble run.
+#'
+#' @param x An \code{EnsembleInputTable} object.
+#' @param unique_only Logical; if \code{TRUE} (default), returns only the
+#'   unique set of slot names across runs. If \code{FALSE}, returns
+#'   per-run slot names (a list).
+#' @param ... Not used.
+#'
+#' @return A character vector of slot names if \code{unique_only = TRUE},
+#'   otherwise a list of character vectors (per run).
+#' @seealso \code{\link{slot_names}}, \code{\link{slot_names.ModelInput}}
+#'   
+#' @author Andrew Roberts
+#' @export
 slot_names.EnsembleInputTable <- function(x, ...) {
   .get_col_block(x, SLOT_PREFIX, strip_prefix=TRUE)
 }
 
-# Returns character(0) if there are no slot columns.
+
+#' Get metadata names
+#'
+#' Returns the names of metadata fields present in the \code{ModelInput}
+#' objects making up the ensemble run.
+#'
+#' @param x An \code{EnsembleInputTable} object.
+#' @param unique_only Logical; if \code{TRUE} (default), returns only the
+#'   unique set of metadata names across runs. If \code{FALSE}, returns
+#'   per-run metadata names (a list).
+#' @param ... Not used.
+#'
+#' @return A character vector of metadata names if \code{unique_only = TRUE},
+#'   otherwise a list of character vectors (per run). Returns character(0)
+#'   in the absence of metadata.
+#' @seealso \code{\link{metadata_names}}, \code{\link{metadata_names.ModelInput}}
+#'   
+#' @author Andrew Roberts
+#' @export
 metadata_names.EnsembleInputTable <- function(x, ...) {
   .get_col_block(x, METADATA_PREFIX, strip_prefix=TRUE)
 }
 
 
+#' Convert an EnsembleInput to table format
+#'
+#' Converts an \code{EnsembleInput} object (e.g., in list or broadcast format)
+#' into an \code{EnsembleInputTable} object. The result will still inherit
+#' from \code{EnsembleInput}.
+#'
+#' @param An \code{EnsembleInput}
+#' @param ... Additional arguments to be used by methods.
+#' 
+#' @returns An \code{EnsembleInputTable} object.
+#' 
+#' @author Andrew Roberts
+#' @export
 as_ensemble_input_table <- function(x, ...) {
   UseMethod("as_ensemble_input_table")
 }
@@ -111,16 +230,26 @@ as_ensemble_input_table <- function(x, ...) {
 
 #' @export
 as_ensemble_input_table.default <- function(x, ...) {
-  stop("as_ensemble_input_table() is not implemented for objects of class ", 
-       paste(class(x), collapse = "/"))
+  raise_default_method_error(x, "as_ensemble_input_table")
 }
 
 
+#' Identity function - input is already an \code{EnsembleInputTable}.
+#' @export
 as_ensemble_input_table.EnsembleInputTable <- function(x, ...) {
   x
 }
 
 
+#' Convert an EnsembleInputList to EnsembleInputTable
+#'
+#' @param An \code{EnsembleInputList}
+#' @param ... Not used
+#' 
+#' @returns An \code{EnsembleInputTable} object.
+#' 
+#' @author Andrew Roberts
+#' @export
 as_ensemble_input_table.EnsembleInputList <- function(x, ...) {
   
   all_slot_names <- slot_names(x)
@@ -154,6 +283,15 @@ as_ensemble_input_table.EnsembleInputList <- function(x, ...) {
 }
 
 
+#' Convert an EnsembleInputBroadcast to EnsembleInputTable
+#'
+#' @param An \code{EnsembleInputBroadcast}
+#' @param ... Not used
+#' 
+#' @returns An \code{EnsembleInputTable} object.
+#' 
+#' @author Andrew Roberts
+#' @export
 as_ensemble_input_table.EnsembleInputBroadcast <- function(x, ...) {
   tbl <- instantiate_slot_grid(x$idx_mat, x$slots)
   tbl <- tbl %>% rename_with(~paste0(SLOT_PREFIX, .x))
@@ -166,15 +304,39 @@ as_ensemble_input_table.EnsembleInputBroadcast <- function(x, ...) {
 }
 
 
+#' Return character vector of run IDs
+#'
+#' See \code{\link{run_ids}}
+#'
+#' @param An \code{EnsembleInputTable}
+#' @param ... Not used
+#' 
+#' @return A character vector of run IDs of length \code{n_runs(x)}.
+#' @seealso \code{\link{run_ids}}
+#' 
+#' @author Andrew Roberts
+#' @export
 run_ids.EnsembleInputTable <- function(x, ...) {
   x$run_id
 }
 
 
-# x: data.frame/tibble
-# prefix: character(1)
-# Optionally strips the prefix before returning.
-# Returns character(0) if there are no matches.
+#' Extract subset of column names with matching prefix
+#'
+#' Return the subset of column names that start with the pattern specified by
+#' the argument \code{prefix}. Optionally strip this prefix out of the column
+#' names before returning.
+#'
+#' @param x A \code{data.frame}.
+#' @param prefix character, the string prefix.
+#' @param strip_prefix logical, if \code{TRUE} removes the prefix from the
+#'  names. Otherwise returns the names unchanged.
+#' 
+#' @returns A character vector column names matching the pattern, potentially
+#'  with the prefix removed. Returns \code{character(0)} is no column names match
+#'  the pattern.
+#' 
+#' @author Andrew Roberts
 .get_col_block <- function(x, prefix, strip_prefix=FALSE) {
   nm <- names(x)
   col_block <- nm[startsWith(nm, prefix)]
@@ -184,6 +346,24 @@ run_ids.EnsembleInputTable <- function(x, ...) {
 }
 
 
+#' Helper function for converting ensemble input list to table
+#'
+#' Used by \code{as_ensemble_input_table.EnsembleInputList}. Returns a list
+#' with data to create one row of a \code{EnsembleInputTable} object, excluding
+#' the \code{run_id} column.
+#'
+#' @param run_id character, used to select element of \code{input_list}.
+#' @param input_list list of \code{ModelInput} objects. Names attribute set to run IDs.
+#' @param slot_names character, the full vector of slot names that are being used
+#'  to construct the table. The slot names for the particular input
+#'  \code{input_list[[run_id]]} may be a strict subset of \code{slot_names}.
+#' @param metadata_names character, same as \code{slot_names} but for the metadata.
+#' 
+#' @returns list with values for all slot and metadata columns for the row of 
+#'  the table associated with \code{run_id}. The \code{run_id} itself is not
+#'  included in the return.
+#' 
+#' @author Andrew Roberts
 .make_ensemble_input_table_row <- function(run_id, input_list, slot_names, 
                                            metadata_names) {
   
@@ -205,7 +385,3 @@ run_ids.EnsembleInputTable <- function(x, ...) {
   names(row_metadata) <- metadata_names
   c(row_slots, row_metadata)
 }
-
-
-
-
