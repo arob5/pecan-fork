@@ -1,12 +1,19 @@
 # forward_model/broadcast_rules.r
 
 
-#' Cartesian prodcut broadcast rule
+#' Cartesian product broadcast rule
 #' 
 #' Full cartesian product of slot values.
 #'
 #' @param lens Integer vector of dimension/slot lengths.
 #' @return A matrix of dimension (prod(lens), length(lens)).
+#'
+#' @examples
+#' # A Cartesian product of three dimensions of size 2, 3 and 2.
+#' # Outputs a matrix with 12 rows and 3 columns.
+#' rule_cartesian(c(2, 3, 2))
+#' 
+#' @author Andrew Roberts
 #' @export
 rule_cartesian <- function(lens) {
   .check_lens(lens)
@@ -22,6 +29,11 @@ rule_cartesian <- function(lens) {
 #'
 #' @param lens Integer vector of slot lengths.
 #' @return A matrix of dimension \code{(n, length(lens))}.
+#' # Three slots, each of length 4.
+#' # Output: a 4 x 3 matrix, with each row corresponding to positions 1, 2, 3, 4.
+#' rule_match(c(4, 4, 4))
+#'
+#' @author Andrew Roberts
 #' @export
 rule_match <- function(lens) {
   .check_lens(lens)
@@ -68,8 +80,10 @@ rule_match <- function(lens) {
 #' # rule_match(c(2, 3))
 #' # Error: Lengths in `lens` must be either 1 or max(lens) for broadcasting.
 #'
-#' @seealso \code{\link{expand.grid}} for generating combinations,
-#'   and broadcasting in array programming (see NumPy or rray documentation)
+#' @seealso For general information on broadcasting in array programming,
+#'   see NumPy or rray documentation.
+#'
+#' @author Andrew Roberts
 #' @export
 rule_broadcast <- function(lens) {
   .check_lens(lens)
@@ -89,7 +103,6 @@ rule_broadcast <- function(lens) {
   
   return(idx)
 }
-
 
 
 #' Create recycled slot indices for broadcasting along specific axes
@@ -117,6 +130,7 @@ rule_broadcast <- function(lens) {
 #' # recycle_indices(c(4, 6))
 #' # Error: All dimensions in 'lens' must evenly divide the maximal length for recycling.
 #'
+#' @author Andrew Roberts
 #' @export
 rule_recycle <- function(lens) {
   .check_lens(lens)
@@ -145,13 +159,16 @@ rule_recycle <- function(lens) {
 #' @param groups A list of integer vectors, each giving the positions
 #'   of slots handled by one sub-rule.
 #' @param rules A list of rule functions, one per group.
-#' @return A new rule function.
+#' @returns A new rule function.
 #' 
 #' @examples
 #' # Rule A handles slots 1:2, rule B handles slots 3:4, then cartesian them together
+#' lens <- c(2, 2, 4, 1)
+#' rule_composite <- get_composite_rule(groups = list(1:2, 3:4), 
+#'                                      rules = list(rule_match, rule_broadcast))
+#' rule_composite(lens) # Outputs 8 by 4 matrix.
 #' 
-#' 
-#' 
+#' @author Andrew Roberts
 #' @export
 get_composite_rule <- function(groups, rules) {
   
@@ -205,6 +222,7 @@ get_composite_rule <- function(groups, rules) {
 #' # [2,] "A_2" "B_2"
 #' # [3,] "A_1" "B_3"
 #'
+#' @author Andrew Roberts
 #' @export
 visualize_slot_grid <- function(idx_mat, slot_names) {
   
@@ -233,22 +251,26 @@ visualize_slot_grid <- function(idx_mat, slot_names) {
 #' a tibble (one column per slot). Handles structured (list-like) values as list columns.
 #'
 #' @param idx_mat Integer matrix, with each row an index tuple for the slots.
-#' @param slots List of length ncol(idx_mat), each element is a list or vector of possible values for that slot.
-#' @return A tibble where each row is a combination of slot values, and list-like slot values become list columns.
+#' @param slots List of length ncol(idx_mat), each element is a list or vector 
+#'    of possible values for that slot.
+#' @return A tibble where each row is a combination of slot values, and list-like 
+#'    slot values become list columns.
+#' 
 #' @examples
 #' library(tibble)
-#' idx <- recycle_indices(c(3, 2))
+#' idx <- rule_recycle(c(4, 2))
 #' slots <- list(
-#'   c("A", "B", "C"),
-#'   list(1:2, 3:4) # slot 2 as a list column!
+#'   c("A", "B", "C", "D"),
+#'   list(1:2, 3:4) # slot 2 as a list column
 #' )
 #' instantiate_slot_grid(idx, slots)
+#'
+#' @author Andrew Roberts
 #' @export
 instantiate_slot_grid <- function(idx_mat, slots) {
   stopifnot(is.matrix(idx_mat))
   stopifnot(is_integer_like(idx_mat))
   stopifnot(is.list(slots))
-  stopifnot(all(vapply(slots, is.list, logical(1))))
   stopifnot(ncol(idx_mat) == length(slots))
   
   n_slots <- ncol(idx_mat)
@@ -275,6 +297,18 @@ instantiate_slot_grid <- function(idx_mat, slots) {
 }
 
 
+#' Validation for vector containing dimension lengths
+#'
+#' Broadcast rule functions operate on integer vectors, where the jth entry
+#' contains the length of the jth dimension. This function checks that 
+#' this integer vector is valid.
+#'
+#' @param lens An R object
+#' 
+#' @returns logical(1), \code{TRUE} is \code{lens} satisfies the requirements to
+#'  be considered proper array dimension lengths.
+#'  
+#' @author Andrew Roberts
 .check_lens <- function(lens) {
   
   if(!is_nonneg_integer_vector(lens) && all(lens > 0)) {
@@ -285,5 +319,3 @@ instantiate_slot_grid <- function(idx_mat, slots) {
     stop("Slot dimension lengths `lens` has length zero.")
   }
 }
-
-
