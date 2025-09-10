@@ -1,18 +1,20 @@
-##' Writes a configuration files for your model
-##' @name write.config.SIPNET
-##' @title Writes a configuration files for SIPNET model
-##' @param defaults pft
-##' @param trait.values vector of samples for a given trait
-##' @param settings PEcAn settings object
-##' @param run.id run ID
-##' @param inputs list of model inputs
-##' @param IC initial condition
-##' @param restart In case this is a continuation of an old simulation. restart needs to be a list with name tags of runid, inputs, new.params (parameters), new.state (initial condition), ensemble.id (ensemble id), start.time and stop.time.See Details.
-##' @param spinup currently unused, included for compatibility with other models
-##' @export
-##' @author Michael Dietze
-write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs = NULL, IC = NULL,
-                                restart = NULL, spinup = NULL) {
+#' Write SIPNET model configuration files to run directory
+#' 
+#' @name write.config.SIPNET
+#' 
+#' @param defaults pft
+#' @param trait.values vector of samples for a given trait
+#' @param settings PEcAn settings object
+#' @param run.id run ID
+#' @param inputs list of model inputs
+#' @param IC initial condition
+#' @param restart In case this is a continuation of an old simulation. restart needs to be a list with name tags of runid, inputs, new.params (parameters), new.state (initial condition), ensemble.id (ensemble id), start.time and stop.time.See Details.
+#' @param spinup currently unused, included for compatibility with other models
+#' @export
+#' @author Michael Dietze
+write.config.SIPNET <- function(defaults, trait.values, settings, run.id, 
+                                inputs=NULL, IC=NULL, restart=NULL, spinup=NULL) {
+  
   ### WRITE sipnet.in
   template.in <- system.file("sipnet.in", package = "PEcAn.SIPNET")
   config.text <- readLines(con = template.in, n = -1)
@@ -36,6 +38,47 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     outdir <- file.path(settings$modeloutdir, as.character(run.id))
   }
   
+  jobsh <- get_sipnet_bash_runner(settings, rundir, outdir, template.clim)
+  writeLines(jobsh, con = file.path(settings$rundir, run.id, "job.sh"))
+  Sys.chmod(file.path(settings$rundir, run.id, "job.sh"))
+  
+  ### WRITE *.param-spatial
+  template.paramSpatial <- system.file("template.param-spatial", package = "PEcAn.SIPNET")
+  file.copy(template.paramSpatial, file.path(settings$rundir, run.id, "sipnet.param-spatial"))
+  
+  
+  param <- get_sipnet_default_params(settings)
+  param <- override_sipnet_default_params(param, settings, trait.values, IC)
+  
+  if (file.exists(file.path(settings$rundir, run.id, "sipnet.param"))) {
+    file.rename(
+      file.path(settings$rundir, run.id, "sipnet.param"),
+      file.path(
+        settings$rundir,
+        run.id,
+        paste0("sipnet_", lubridate::year(settings$run$start.date), "_", lubridate::year(settings$run$end.date), ".param")
+      )
+    )
+  }
+
+
+  utils::write.table(
+    param,
+    file.path(settings$rundir, run.id, "sipnet.param"),
+    row.names = FALSE,
+    col.names = FALSE,
+    quote = FALSE
+  )
+} # write.config.SIPNET
+
+
+#' Build Bash Script to Run SIPNET Model
+#'
+#' @param settings A PEcAn \code{Settings} object.
+#'
+#' @export
+get_sipnet_bash_runner <- function(settings, rundir, outdir, template.clim) {
+  
   # create launch script (which will create symlink)
   if (!is.null(settings$model$jobtemplate) && file.exists(settings$model$jobtemplate)) {
     jobsh <- readLines(con = settings$model$jobtemplate, n = -1)
@@ -43,7 +86,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     jobsh <- readLines(con = system.file("template.job", package = "PEcAn.SIPNET"), n = -1)
   }
   
-  # create host specific setttings
+  # create host specific settings
   hostsetup <- ""
   if (!is.null(settings$model$prerun)) {
     hostsetup <- paste(hostsetup, sep = "\n", paste(settings$model$prerun, collapse = "\n"))
@@ -127,21 +170,55 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
   }
   jobsh <- gsub("@DELETE.RAW@", settings$model$delete.raw, jobsh)
   
-  writeLines(jobsh, con = file.path(settings$rundir, run.id, "job.sh"))
-  Sys.chmod(file.path(settings$rundir, run.id, "job.sh"))
-  
-  ### WRITE *.param-spatial
-  template.paramSpatial <- system.file("template.param-spatial", package = "PEcAn.SIPNET")
-  file.copy(template.paramSpatial, file.path(settings$rundir, run.id, "sipnet.param-spatial"))
-  
-  ### WRITE *.param
-  template.param <- system.file("template.param", package = "PEcAn.SIPNET")
+  return(jobsh)
+}
+
+
+#' Returns Table of Default SIPNET Parameter Settings
+#'
+#' @details
+#' The term "parameter" here is used generally to include SIPNET model
+#' parameters (e.g., trait values) and initial conditions for state variables.
+#' If \code{settings$model$default.param} is specified, then this value will
+#' be taken as the default parameters. Otherwise, falls back on the defaults
+#' specified in https://github.com/PecanProject/pecan/blob/develop/models/sipnet/inst/template.param
+#' 
+#' @param settings A PEcAn \code{Settings} object.
+#' 
+#' @returns \code{data.frame}, the table of default parameter values, with 
+#'  one row per parameter. 
+#' @export
+get_sipnet_default_params <- function(settings) {
+  template.param <- system.file("template.param", package="PEcAn.SIPNET")
   if ("default.param" %in% names(settings$model)) {
     template.param <- settings$model$default.param
   }
   
   param <- utils::read.table(template.param)
-  
+  return(param)
+}
+
+
+#' Overrides Values in Default SIPNET Parameter Settings
+#'
+#' Given a table \code{param} of default SIPNET parameters
+#' (see \code{\link{get_sipnet_default_params}}), overrides default parameter
+#' values specified in \code{trait.values} and initial conditions specified
+#' in \code{IC}.
+#' 
+#' @details
+#' Default initial condition values can also be overwritten indirectly via
+#' specifying file paths in \code{setttings}. See 
+#' \code{\link{override_sipnet_default_ic}}.
+#'
+#' @param param \code{data.frame}, the table of default parameters.
+#' @param settings A PEcAn \code{Settings} object.
+#' @param trait.values TODO: add requirements
+#' @param IC TODO: add requirements
+#' 
+#' @returns \code{data.frame} of the same structure as \code{param}, with 
+#'  default values overwritten.
+override_sipnet_default_params <- function(param, settings, trait.values, IC=NULL) {
   #### write run-specific PFT parameters here
   #
   # Q: "Wait, Sipnet only uses one PFT at a time. What's this loop doing?"
@@ -458,7 +535,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     if ("leafGrowth" %in% pft.names) {
       param[which(param[, 1] == "leafGrowth"), 2] <- pft.traits[which(pft.names == "leafGrowth")]
     }
-
+    
     #update LeafOnday and LeafOffDay
     if (!is.null(settings$run$inputs$leaf_phenology)) {
       obs_year_start <- lubridate::year(settings$run$start.date)
@@ -485,8 +562,8 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
         }
       } else {
         PEcAn.logger::logger.info("No phenology data were found.",
-          "Please consider running `PEcAn.data.remote::extract_phenology_MODIS`",
-          "to get the parameter file."
+                                  "Please consider running `PEcAn.data.remote::extract_phenology_MODIS`",
+                                  "to get the parameter file."
         )
       }
     }
@@ -531,9 +608,9 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
         param[which(param[, 1] == "soilWHC"), 2] <- soilWHC_total
       }
       if ("soil_hydraulic_conductivity_at_saturation" %in% names(soil_IC_list$vals)) {
-         #litwaterDrainrate in cm/day
-         param[which(param[, 1] == "litWaterDrainRate"), 2] <- PEcAn.utils::ud_convert(unlist(soil_IC_list$vals["soil_hydraulic_conductivity_at_saturation"])[1], "m s-1", "cm day-1")
-       }
+        #litwaterDrainrate in cm/day
+        param[which(param[, 1] == "litWaterDrainRate"), 2] <- PEcAn.utils::ud_convert(unlist(soil_IC_list$vals["soil_hydraulic_conductivity_at_saturation"])[1], "m s-1", "cm day-1")
+      }
     }
   }
   if (!is.null(IC)) {
@@ -547,7 +624,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
       }else{
         wood_total_C <- IC$AbvGrndWood / IC$abvGrndWoodFrac
       }
-
+      
       #Sanity check
       if (is.infinite(wood_total_C) | is.nan(wood_total_C) | wood_total_C < 0) {
         wood_total_C <- 0
@@ -563,7 +640,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
               IC$abvGrndWoodFrac
             )
           )
-        }
+      }
       param[which(param[, 1] == "plantWoodInit"),  2] <- wood_total_C
       param[which(param[, 1] == "coarseRootFrac"), 2] <- IC$coarseRootFrac
       param[which(param[, 1] == "fineRootFrac"),   2] <- IC$fineRootFrac
@@ -601,7 +678,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     if ("microbe" %in% ic.names) {
       param[which(param[, 1] == "microbeInit"), 2] <- IC$microbe
     }
-
+    
   } else if (length(settings$run$inputs$poolinitcond$path) > 0) {
     IC.path <- settings$run$inputs$poolinitcond$path
     if (length(IC.path) > 1) {
@@ -615,7 +692,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     
     if (!is.null(IC.pools)) {
       IC.nc <- ncdf4::nc_open(IC.path) #for additional variables specific to SIPNET
-
+      
       # Optional variables: Use these if present, but don't complain if missing
       # TODO: Each variable here is used in a corresponding `if` block below,
       # which are mixed in among the variables from prepare_pools.
@@ -631,7 +708,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
       )
       ic_has_ncvars <- ic_ncvars_to_try %in% names(IC.nc$var)
       names(ic_has_ncvars) <- ic_ncvars_to_try
-
+      
       ## plantWoodInit gC/m2
       if ("wood" %in% names(IC.pools)) {
         param[param[, 1] == "plantWoodInit", 2] <- PEcAn.utils::ud_convert(IC.pools$wood, "kg m-2", "g m-2")
@@ -641,7 +718,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
       if (!is.na(lai) && is.numeric(lai)) {
         param[param[, 1] == "laiInit", 2] <- lai
       }
-
+      
       # Sipnet always starts from initial LAI whether day 0 is in or out of the
       # growing season -> set LAI=0 when a deciduous PFT starts with leaves off
       #
@@ -664,7 +741,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
         # season peak and not (2) adjusted by any earlier step (i.e. SDA).
         param[param[, 1] == "laiInit", 2] <- 0
       }
-
+      
       ## neeInit gC/m2
       if (ic_has_ncvars[["nee"]]) {
         nee <- ncdf4::ncvar_get(IC.nc, "nee")
@@ -689,7 +766,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
       }
       ## litterWFracInit fraction
       litterWFrac <- soilWFrac
-
+      
       ## snowInit cm water equivalent (cm = g / cm2 because 1 g water = 1 cm3 water)
       if (ic_has_ncvars[["SWE"]]) {
         snow <- ncdf4::ncvar_get(IC.nc, "SWE")
@@ -717,7 +794,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
           param[param[, 1] == "microbeInit", 2] <- PEcAn.utils::ud_convert(microbe, "mg kg-1", "mg g-1") #BETY: mg microbial C kg-1 soil
         }
       }
-
+      
       ncdf4::nc_close(IC.nc)
     } else {
       PEcAn.logger::logger.error("Bad initial conditions filepath; keeping defaults")
@@ -725,43 +802,20 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
   } else {
     #some stuff about IC file that we can give in lieu of actual ICs
   }
-
-
+  
+  
   if (!is.null(settings$run$inputs$soilmoisture)) {
     #read soil moisture netcdf file, grab closet date to start_date, set equal to soilWFrac
     if (!is.null(settings$run$inputs$soilmoisture$path)) {
       soil.path <- settings$run$inputs$soilmoisture$path
       soilWFrac <- ncdf4::ncvar_get(ncdf4::nc_open(soil.path), varid = "mass_fraction_of_unfrozen_water_in_soil_moisture")
-
+      
       param[which(param[, 1] == "soilWFracInit"), 2] <- soilWFrac
     }
-
   }
-  if (file.exists(file.path(settings$rundir, run.id, "sipnet.param"))) {
-    file.rename(
-      file.path(settings$rundir, run.id, "sipnet.param"),
-      file.path(
-        settings$rundir,
-        run.id,
-        paste0("sipnet_", lubridate::year(settings$run$start.date), "_", lubridate::year(settings$run$end.date), ".param")
-      )
-    )
-  }
-
-
-  utils::write.table(
-    param,
-    file.path(settings$rundir, run.id, "sipnet.param"),
-    row.names = FALSE,
-    col.names = FALSE,
-    quote = FALSE
-  )
-} # write.config.SIPNET
-
-
-
-
-
+  
+  return(param)
+}
 
 
 #--------------------------------------------------------------------------------------------------#
