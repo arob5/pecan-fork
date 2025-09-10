@@ -8,9 +8,9 @@
 # an `EnsembleInputBroadcast` object can be constructed by passing a 
 # "broadcast rule" function that produces this matrix.
 
-# `EnsembleInputBroadcast` currently does not support run metadata or custom
-# run IDs. It also currently requires all runs to have the same slots. All
-# of these can eventually be accomodated. For the latter, `idx_mat` could be
+# `EnsembleInputBroadcast` currently does not support run metadata.
+# It also currently requires all runs to have the same slots. All
+# of these can eventually be accommodated. For the latter, `idx_mat` could be
 # allowed to have NA values.
 
 
@@ -28,14 +28,17 @@
 #' containing a unique set of values for each slot. \code{idx_mat} is an
 #' integer matrix of shape \code{(n_runs, n_slots)}. The \code{(i,j)} element 
 #' contains the index of the list \code{slots[[j]]}, which is the value to use 
-#' in the jth slot for the ith run. While this index matrix can be defined
-#' by hand, it is typically more convenient and self-documenting to instead
-#' implicitly define this matrix via a "broadcast rule". See the alternative
-#' constructor \code{\link{EnsembleInput.function}} for more information.
+#' in the jth slot for the ith run. The row names of this matrix define the 
+#' run IDs for each run. The column names are set to the corresponding slot names.
+#' While this index matrix can be defined by hand, it is typically more 
+#' convenient and self-documenting to instead implicitly define this matrix via 
+#' a "broadcast rule". See the alternative constructor 
+#' \code{\link{EnsembleInput.function}} for more information.
 #'
 #' @param idx_mat An integer matrix of dimension \code{(n_runs, n_slots)}.
 #'  The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
-#'  which is the value to use in the jth slot for the ith run.
+#'  which is the value to use in the jth slot for the ith run. Row names will
+#'  be interpreted as run IDs, with defaults defined if not explicitly provided.
 #' @param slots A named list of slot value sets. The jth element of \code{slots}
 #'  is itself a list, containing a unique set of values for that slot.
 #'  
@@ -108,7 +111,9 @@ EnsembleInput.function <- function(broadcast_rule, slots) {
 #' @details
 #' Exactly one of \code{idx_mat} or \code{broadcast_rule} must be non-\code{NULL}.
 #' If the latter is provided, then \code{idx_mat} is constructed using the
-#' broadcast rule.
+#' broadcast rule. The row names of \code{idx_mat} are interpreted as run IDs,
+#' and therefore should be unique. Default run IDs of the form `run_<row-idx>`
+#' are assigned if not provided.
 #' 
 #' @param slots A named list of slot value sets. The jth element of \code{slots}
 #'  is itself a list, containing a unique set of values for that slot.
@@ -135,6 +140,21 @@ EnsembleInput.function <- function(broadcast_rule, slots) {
   # Construct the index matrix by applying the broadcast rule.
   if(is.null(idx_mat)) idx_mat <- .broadcast_slots(slots, broadcast_rule)
   
+  # Assign default run IDs if needed.
+  if(is.null(rownames(idx_mat))) {
+    rownames(idx_mat) <- paste0("run_", seq_len(nrow(idx_mat)))
+  }
+  
+  # Assign slot names as column names, if needed. Sort columns to align with
+  # slots order.
+  if(is.null(colnames(idx_mat))) {
+    message("No column names provided for `idx_mat`. Setting to `names(slots)`,",
+            " which assumes column order aligns with slot order.")
+    
+    colnames(idx_mat) <- names(slots)
+  } else {
+    idx_mat <- idx_mat[,names(slots)]
+  }
   
   structure(list(slots=slots, idx_mat=idx_mat, rule=broadcast_rule),
             class = c("EnsembleInputBroadcast", "EnsembleInput"))
@@ -182,6 +202,9 @@ check_ensemble_input_broadcast_type <- function(x) {
 #' matrix with number of cols equal to \code{length(slots)}. The values in 
 #' column \code{j} of \code{idx_mat} must be integers between 1 and
 #' \code{length(slots[[j]])}. \code{rule} must be a function, or \code{NULL}.
+#' \code{idx_mat} must have unique and non-missing row names for all rows, 
+#' as the row names are interpreted as the run IDs. \code{idx_mat} must 
+#' have column names set to \code{names(slots)}, in the same order.
 #'
 #' @param x An object.
 #' @return Invisibly returns \code{TRUE} if validation tests are passed, 
@@ -205,30 +228,52 @@ validate_ensemble_input_broadcast <- function(x) {
     stop("`EnsembleInputBroadcast$rule` list is missing.")
   }
   
-  if(!is_named_or_empty_list(x$slots, check_unique_names=TRUE)) {
+  idx_mat <- x$idx_mat
+  slots <- x$slots
+  rule <- x$rule
+  
+  if(!is_named_or_empty_list(slots, check_unique_names=TRUE)) {
     stop("EnsembleInputBroadcast$slots must be a named list or empty list.")
   }
   
-  if(!is.function(x$rule) && !is.null(x$rule)) {
+  if(!is.function(rule) && !is.null(rule)) {
     stop("EnsembleInputBroadcast$rule must be a function or NULL.")
   }
   
-  if(!is.matrix(x$idx_mat) || !is_integer_like(x$idx_mat)) {
+  if(!is.matrix(idx_mat) || !is_integer_like(idx_mat)) {
     stop("EnsembleInputBroadcast$idx_mat must be an integer matrix.")
   }
   
-  if(!all(vapply(x$slots, is.list, logical(1)))) {
+  if(is.null(rownames(idx_mat))) {
+    stop("EnsembleInputBroadcast$idx_mat is missing row names (run IDs).")
+  }
+  
+  row_names <- rownames(idx_mat)
+  
+  if(is.null(row_names)) {
+    stop("EnsembleInputBroadcast$idx_mat is missing row names (run IDs).")
+  }
+  
+  if(!all(nzchar(row_names)) || anyDuplicated(row_names)) {
+    stop("EnsembleInputBroadcast$idx_mat has duplicate or missing row names (run IDs).")
+  }
+  
+  if(!all(colnames(idx_mat) == names(slots))) {
+    stop("EnsembleInputBroadcast$idx_mat must have column names identical to `names(slots)`.")
+  }
+  
+  if(!all(vapply(slots, is.list, logical(1)))) {
     stop("EnsembleInputBroadcast$slots must be a list of lists.")
   }
   
-  if(ncol(x$idx_mat) != length(x$slots)) {
+  if(ncol(idx_mat) != length(slots)) {
     stop("EnsembleInputBroadcast dimension mismatch between `idx_mat` and `slots`.")
   }
   
-  if(ncol(x$idx_mat) > 0L) {
-    for(j in seq_len(ncol(x$idx_mat))) {
-      max_idx <- length(x$slots[[j]])
-      if(!all(x$idx_mat[[j]] >= 1L & x$idx_mat[[j]] <= max_idx)) {
+  if(ncol(idx_mat) > 0L) {
+    for(j in seq_len(ncol(idx_mat))) {
+      max_idx <- length(slots[[j]])
+      if(!all(idx_mat[[j]] >= 1L & idx_mat[[j]] <= max_idx)) {
         stop("`idx_mat` contains invalid entries in column ", j,
              " Entries must be between 1 and length(slots[[j]]) = ", max_idx)
       }
@@ -252,9 +297,7 @@ validate_ensemble_input_broadcast <- function(x) {
 #' @author Andrew Roberts
 #' @export
 run_ids.EnsembleInputBroadcast <- function(x, ...) {
-  message("EnsembleInputBroadcast does not yet support custom run_ids. Autogenerating run_ids.")
-  
-  paste0("run_", seq_len(nrow(x$idx_mat)))
+  rownames(x$idx_mat)
 }
 
 
@@ -334,7 +377,35 @@ as_ensemble_input_broadcast.EnsembleInputBroadcast <- function(x, ...) {
 }
 
 
-#' Compute index matrix from broadcast rule
+#' Get ModelInput for Specific Run from EnsembleInputBroadcast
+#'
+#' Returns the \code{ModelInput} object for run identified by the specified
+#' \code{run_id}. 
+#'
+#' @param x An \code{EnsembleInputBroadcast}
+#' @param run_id character(1), the run ID.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return The \code{ModelInput} for the selected run. Throws error if 
+#'  \code{run_id} is not found.
+#' 
+#' @author Andrew Roberts
+#' @export
+get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
+  stopifnot(is_character_scalar(run_id))  
+
+  if(!(run_id %in% rownames(x$idx_mat))) raise_run_id_not_found_error(run_id)
+  
+  # Construct ModelInput object.
+  slot_idxs <- x$idx_mat[run_id,] # Has names set to slot names
+  slots <- instantiate_slots(slot_idxs, x$slots)
+  model_input_args <- c(slots, list(metadata=list()))
+  
+  do.call(ModelInput, model_input_args)
+}
+
+
+#' Replace Index Matrix with String Label Matrix for Easier Interpretation
 #' 
 #' Convenience function to help visualize the ensemble inputs. In particular,
 #' returns a matrix of the same shape as \code{x$idx_mat}, where the integer

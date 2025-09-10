@@ -245,16 +245,67 @@ visualize_slot_grid <- function(idx_mat, slot_names) {
 }
 
 
-#' Instantiate an index matrix with slot values, producing a tibble
+#' Fill Index Vector with Slot Values
+#'
+#' Given an index vector \code{idx}, produces a list of the same length.
+#' The values in this list are taken from \code{slots}. The names of 
+#' \code{idx} specify which slot to pull from, and the values of \code{idx}
+#' specify which value to pull from that slot (by index).
+#' 
+#' @details
+#' The names attribute of \code{idx} contain slot names, so that 
+#' \code{nm <- names(idx)[j]} is the slot corresponding to element \code{j}
+#' of \code{idx}. Element \code{j} of the returned list is then set to
+#' the value \code{slots[[nm]][idx[j]]}. Note that \code{idx} is allowed to 
+#' be of different length than \code{slots}; i.e., slots may be repeated or 
+#' not used at all. If any names of \code{idx} are not valid slots in \code{slot},
+#' an error is thrown. An error is also thrown if a value in \code{slot} is outside
+#' the index range of a particular slot.
+#' 
+#' @param idx named integer vector.
+#' @param slots named list of slots, with names defining the slot names. Each 
+#' element is a list or vector of possible values for that slot.
+#'
+#' @return A list of length equal to the length of \code{idx} (see details).
+#'
+#' @author Andrew Roberts
+#' @export
+instantiate_slots <- function(idx, slots) {
+  stopifnot(is_named_integer_vector(idx, check_unique_names=FALSE))
+  stopifnot(is_named_list(slots, check_unique_names=TRUE))
+  
+  slot_names <- names(idx)
+  
+  # All slot names must exist in slots
+  missing_slots <- setdiff(slot_names, names(slots))
+  if(length(missing_slots) > 0L) {
+    stop("Slot name(s) not found in `slots`: ", paste(missing_slots, collapse=", "))
+  }
+  
+  slot_vals <- Map(function(nm, i) .get_slot_value(nm, i, slots),
+                   slot_names, idx)
+  names(slot_vals) <- slot_names
+  
+  return(slot_vals)
+}
+
+
+#' Fill Index Matrix with Slot Values
 #'
 #' For each row of idx_mat, uses indices to pull values from slots, constructing
-#' a tibble (one column per slot). Handles structured (list-like) values as list columns.
+#' a tibble (one column per slot). Handles structured (list-like) values as list 
+#' columns.
 #'
 #' @param idx_mat Integer matrix, with each row an index tuple for the slots.
 #' @param slots List of length ncol(idx_mat), each element is a list or vector 
 #'    of possible values for that slot.
+#' @param include_rownames logical, if \code{TRUE} and \code{idx_mat} has 
+#'  rownames, then these rownames are added as a column with name specified by
+#'  the argument \code{rownames_col}. If \code{FALSE}, this column is not added.
+#'
 #' @return A tibble where each row is a combination of slot values, and list-like 
-#'    slot values become list columns.
+#'    slot values become list columns. The tibble has the same number of rows
+#'    as \code{idx_mat}.
 #' 
 #' @examples
 #' library(tibble)
@@ -267,11 +318,13 @@ visualize_slot_grid <- function(idx_mat, slot_names) {
 #'
 #' @author Andrew Roberts
 #' @export
-instantiate_slot_grid <- function(idx_mat, slots) {
+instantiate_slot_grid <- function(idx_mat, slots, include_rownames=FALSE,
+                                  rownames_col="row_names") {
   stopifnot(is.matrix(idx_mat))
   stopifnot(is_integer_like(idx_mat))
   stopifnot(is.list(slots))
   stopifnot(ncol(idx_mat) == length(slots))
+  stopifnot(is_character_scalar(rownames_col))
   
   n_slots <- ncol(idx_mat)
   n_combs <- nrow(idx_mat)
@@ -293,7 +346,31 @@ instantiate_slot_grid <- function(idx_mat, slots) {
   
   cols <- lapply(seq_len(n_slots), create_column)
   names(cols) <- slot_colnames
-  tibble::as_tibble(cols)
+  tbl <- tibble::as_tibble(cols)
+  
+  # Optionally add a column storing the rownames of `idx_mat`.
+  if(include_rownames && !is.null(rownames(idx_mat))) {
+    tbl <- tbl %>% dplyr::mutate(!!rownames_col := rownames(idx_mat))
+  }
+  
+  return(tbl)
+}
+
+
+#' Extract Slot Value By Index
+#'
+#' Helper to extract a value from a particular slot. The slot is selected by
+#' name, and the value in that slot is selected by index. No validation is 
+#' done in this low-level helper. 
+#' 
+#' @param slot_name character(1), a string name in \code{names(slots)}
+#' @param slot_idx integer(1), an index of the vector/list \code{slots[[slot_name]]}
+#' @param slots named list, with list or vector elements
+#' 
+#' @returns The value \code{slots[[slot_name]][[slot_idx]]}.
+#' @author Andrew Roberts
+.get_slot_value <- function(slot_name, slot_idx, slots) {
+  slots[[slot_name]][[slot_idx]]
 }
 
 

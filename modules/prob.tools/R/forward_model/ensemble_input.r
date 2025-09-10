@@ -188,6 +188,31 @@ dim.EnsembleInput <- function(x, ...) {
 }
 
 
+#' Generic Getter for ModelInput for Specific Run 
+#'
+#' Returns the \code{ModelInput} object for run identified by the specified
+#' \code{run_id}. 
+#'
+#' @param x An \code{EnsembleInput}
+#' @param run_id character(1), the run ID.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return The \code{ModelInput} for the selected run. Throws error if 
+#'  \code{run_id} is not found.
+#' 
+#' @author Andrew Roberts
+#' @export
+get_run_input <- function(x, run_id, ...) {
+  UseMethod("get_run_input")
+}
+
+
+#' @export
+get_run_input.default <- function(x, run_id, ...) {
+  raise_default_method_error(x, "get_run_input")
+}
+
+
 #' Summarize an EnsembleInput
 #'
 #' Provide a unified summary of an \code{EnsembleInput} object, irrespective of
@@ -212,3 +237,15 @@ summary.EnsembleInput <- function(x, ...) {
   
   invisible(x)
 }
+
+
+#' Error when a requested run ID is not present
+#' 
+#' @author Andrew Roberts
+raise_run_id_not_found_error <- function(run_id) {
+  stop("Run ID `", run_id, "` not found in EnsembleInput.")
+}
+
+
+
+

@@ -151,8 +151,8 @@ validate_ensemble_input_table <- function(x) {
   }
   
   tagged_cols <- c("run_id", 
-                   .get_col_block(obj, SLOT_PREFIX, strip_prefix=FALSE),
-                   .get_col_block(obj, METADATA_PREFIX, strip_prefix=FALSE))
+                   .get_col_block_names(obj, SLOT_PREFIX, strip_prefix=FALSE),
+                   .get_col_block_names(obj, METADATA_PREFIX, strip_prefix=FALSE))
   invalid_cols <- setdiff(names(obj), tagged_cols)
     
   if(length(invalid_cols) > 0L) {
@@ -183,7 +183,7 @@ validate_ensemble_input_table <- function(x) {
 #' @author Andrew Roberts
 #' @export
 slot_names.EnsembleInputTable <- function(x, ...) {
-  .get_col_block(x, SLOT_PREFIX, strip_prefix=TRUE)
+  .get_col_block_names(x, SLOT_PREFIX, strip_prefix=TRUE)
 }
 
 
@@ -206,7 +206,7 @@ slot_names.EnsembleInputTable <- function(x, ...) {
 #' @author Andrew Roberts
 #' @export
 metadata_names.EnsembleInputTable <- function(x, ...) {
-  .get_col_block(x, METADATA_PREFIX, strip_prefix=TRUE)
+  .get_col_block_names(x, METADATA_PREFIX, strip_prefix=TRUE)
 }
 
 
@@ -293,9 +293,11 @@ as_ensemble_input_table.EnsembleInputList <- function(x, ...) {
 #' @author Andrew Roberts
 #' @export
 as_ensemble_input_table.EnsembleInputBroadcast <- function(x, ...) {
-  tbl <- instantiate_slot_grid(x$idx_mat, x$slots)
-  tbl <- tbl %>% rename_with(~paste0(SLOT_PREFIX, .x))
-  tbl <- tbl %>% mutate(run_id = run_ids(x))
+  tbl <- instantiate_slot_grid(x$idx_mat, x$slots, include_rownames=TRUE, 
+                               rownames_col="run_id")
+  
+  slot_colnames <- setdiff(names(tbl), "run_id")
+  tbl <- tbl %>% dplyr::rename_with(~paste0(SLOT_PREFIX, .x), .cols=slot_colnames)
   
   tbl <- set_ensemble_input_table_class(tbl)
   validate_ensemble_input_table(tbl)
@@ -321,11 +323,44 @@ run_ids.EnsembleInputTable <- function(x, ...) {
 }
 
 
+#' Get ModelInput for Specific Run from EnsembleInputTable
+#'
+#' Returns the \code{ModelInput} object for run identified by the specified
+#' \code{run_id}. 
+#'
+#' @param x An \code{EnsembleInputTable}
+#' @param run_id character(1), the run ID.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return The \code{ModelInput} for the selected run. Throws error if 
+#'  \code{run_id} is not found.
+#' 
+#' @author Andrew Roberts
+#' @export
+get_run_input.EnsembleInputTable <- function(x, run_id, ...) {
+  stopifnot(is_character_scalar(run_id))
+  
+  # Avoid clash with column name.
+  rid <- run_id
+  input_row <- dplyr::filter(x, run_id == rid)
+  
+  if(nrow(input_row) == 0L) raise_run_id_not_found_error(run_id)
+  
+  # Construct ModelInput object.
+  slot_block <- .get_col_block(input_row, SLOT_PREFIX, strip_prefix=TRUE)
+  metadata_block <- .get_col_block(input_row, SLOT_PREFIX, strip_prefix=TRUE)
+  model_input_args <- c(as.list(slot_block), list(metadata=as.list(metadata_block)))
+  
+  do.call(ModelInput, model_input_args)
+}
+
+
 #' Extract subset of column names with matching prefix
 #'
 #' Return the subset of column names that start with the pattern specified by
 #' the argument \code{prefix}. Optionally strip this prefix out of the column
-#' names before returning.
+#' names before returning. The function \code{\link{.get_col_block}}
+#' but returns the actual subsetted table rather than just the column names.
 #'
 #' @param x A \code{data.frame}.
 #' @param prefix character, the string prefix.
@@ -337,11 +372,39 @@ run_ids.EnsembleInputTable <- function(x, ...) {
 #'  the pattern.
 #' 
 #' @author Andrew Roberts
-.get_col_block <- function(x, prefix, strip_prefix=FALSE) {
+.get_col_block_names <- function(x, prefix, strip_prefix=FALSE) {
   nm <- names(x)
   col_block <- nm[startsWith(nm, prefix)]
   
   if(strip_prefix) sub(paste0("^", prefix), "", col_block)
+  else col_block
+}
+
+
+#' Extract subset of columns with names matching prefix
+#'
+#' Return the subset of columns whose names start with the pattern specified by
+#' the argument \code{prefix}. Optionally strip this prefix out of the column
+#' names before returning. The function \code{\link{.get_col_block_names}}
+#' is similar but only returns column names.
+#'
+#' @param x A \code{data.frame}.
+#' @param prefix character, the string prefix.
+#' @param strip_prefix logical, if \code{TRUE} removes the prefix from the
+#'  names. Otherwise the names are unchanged.
+#' 
+#' @returns A \code{data.frame} with the subset of columns selected. If 
+#'  \code{strip_prefix = TRUE} then the columns are renamed to remove the prefix.
+#'  If a column name is identical to the prefix, an error will be thrown. If
+#'  no columns are selected, a zero column tibble is returned.
+#' 
+#' @author Andrew Roberts
+.get_col_block <- function(x, prefix, strip_prefix=FALSE) {
+  
+  col_block <- dplyr::select(x, starts_with(prefix))
+  if(ncol(col_block) == 0L) return(col_block)
+  
+  if(strip_prefix) col_block %>% dplyr::rename_with(~sub(paste0("^", prefix), "", .))
   else col_block
 }
 

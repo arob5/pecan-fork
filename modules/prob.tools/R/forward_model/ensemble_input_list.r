@@ -212,3 +212,29 @@ metadata_names.EnsembleInputList <- function(x, unique_only=TRUE, ...) {
   else metadata_names_per_run
 }
 
+
+#' Get ModelInput for Specific Run from EnsembleInputList
+#'
+#' Returns the \code{ModelInput} object for run identified by the specified
+#' \code{run_id}. 
+#'
+#' @param x An \code{EnsembleInputList}
+#' @param run_id character(1), the run ID.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return The \code{ModelInput} for the selected run. Throws error if 
+#'  \code{run_id} is not found.
+#' 
+#' @author Andrew Roberts
+#' @export
+get_run_input.EnsembleInputList <- function(x, run_id, ...) {
+  stopifnot(is_character_scalar(run_id))
+  
+  model_input <- x$inputs[[run_id]]
+  
+  if(is.null(model_input)) raise_run_id_not_found_error(run_id)
+  else model_input
+}
+
+
+

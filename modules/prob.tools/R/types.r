@@ -3,6 +3,25 @@
 # Helper functions for checking that R objects satisfy the requirements of
 # particular user-defined "types".
 
+#' Check that R object has full set of names
+#' 
+#' Check if an R object has names, and that every element of the object
+#' has a name (empty string does not count as a name). Optionally check 
+#' that the names are unique. An object without a names attribute is considered 
+#' to not have names.
+#' 
+#' @param x An R object
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
+#' 
+#' @returns logical, \code{TRUE} if object has full set of (unique) names.
+#' @author Andrew Roberts
+has_names <- function(x, check_unique_names=TRUE) {
+  !is.null(names(x)) &&
+    length(names(x)) == length(x) &&
+    all(nzchar(names(x))) && # Ensure no "" names.
+    (!check_unique_names || !anyDuplicated(names(x)))
+}
+
 
 #' Check if an R object is an atomic scalar
 #' 
@@ -17,20 +36,6 @@ is_scalar <- function(x) {
   is.atomic(x) &&
     !is.array(x) &&
     length(x) == 1L
-}
-
-
-#' Check if an R object is a numeric scalar
-#' 
-#' A numeric scalar must be numeric, atomic, and length one. Singleton arrays,
-#' data.frames, etc. are not considered scalars.
-#' 
-#' @param x An R object
-#' @returns logical, \code{TRUE} if a numeric scalar.
-#' @seealso \code{\link{is_scalar}}, \code{\link{is_integer_scalar}}
-#' @author Andrew Roberts
-is_numeric_scalar <- function(x) {
-  is_scalar(x) && is.numeric(x)
 }
 
 
@@ -50,6 +55,49 @@ is_integer_like <- function(x) {
 }
 
 
+#' Check if an R object is a named vector, with all names provided (empty
+#' strings are not allowed).
+#' 
+#' @param x An R object
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness 
+#'  requirement on names.
+#' @returns logical, \code{TRUE} if a vector with all names provided. 
+#' @author Andrew Roberts
+is_named_vector <- function(x, check_unique_names=TRUE) {
+    is.atomic(x) &&
+    !is.array(x) &&
+    has_names(x, check_unique_names)
+}
+
+
+#' Check if an R object is a numeric scalar
+#' 
+#' A numeric scalar must be numeric, atomic, and length one. Singleton arrays,
+#' data.frames, etc. are not considered scalars.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if a numeric scalar.
+#' @seealso \code{\link{is_scalar}}, \code{\link{is_integer_scalar}}
+#' @author Andrew Roberts
+is_numeric_scalar <- function(x) {
+  is_scalar(x) && is.numeric(x)
+}
+
+
+#' Check if an R object is a character scalar
+#' 
+#' The object is considered a character scalar if it is an atomic character
+#' vector of length one.
+#' 
+#' @param x An R object
+#' @returns logical, \code{TRUE} if a character scalar.
+#' @seealso \code{\link{is_scalar}}, \code{\link{is_numeric_scalar}}
+#' @author Andrew Roberts
+is_character_scalar <- function(x) {
+  is_scalar(x) && is.character(x)
+}
+
+
 #' Check if an R object is an integer scalar
 #' 
 #' The object is considered an integer scalar if it is a numeric scalar and
@@ -65,18 +113,29 @@ is_integer_scalar <- function(x) {
 }
 
 
-#' Check if an R object is a named vector, with all names provided (empty
-#' strings are not allowed).
+#' Check if an R object is a named character vector, with all names provided 
+#' (empty strings are not allowed).
 #' 
 #' @param x An R object
-#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
-#' @returns logical, \code{TRUE} if a vector with all names provided. 
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness 
+#'  requirement on names.
+#' @returns logical, \code{TRUE} if a character vector with all names provided. 
 #' @author Andrew Roberts
 is_named_numeric_vector <- function(x, check_unique_names=TRUE) {
-  is.numeric(x) &&
-  is.atomic(x) &&
-  !is.array(x) &&
-  has_names(x, check_unique_names)
+  is.numeric(x) && is_named_vector(x, check_unique_names)
+}
+
+
+#' Check if an R object is a named vector, with values that can be safely
+#' converted to integers
+#' 
+#' @param x An R object
+#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness 
+#'  requirement on names.
+#' @returns logical, \code{TRUE} if integer vector with all names provided. 
+#' @author Andrew Roberts
+is_named_integer_vector <- function(x, check_unique_names=TRUE) {
+  is_integer_like(x) && is_named_vector(x, check_unique_names)
 }
 
 
@@ -117,26 +176,6 @@ is_nonneg_integer_vector <- function(x) {
   is.atomic(x) &&
     is_integer_like(x) &&
     all(x >= 0)
-}
-
-
-#' Check that R object has full set of names
-#' 
-#' Check if an R object has names, and that every element of the object
-#' has a name (empty string does not count as a name). Optionally check 
-#' that the names are unique. An object without a names attribute is considered 
-#' to not have names.
-#' 
-#' @param x An R object
-#' @param check_unique_names logical, if \code{TRUE} then impose uniqueness requirement on names.
-#' 
-#' @returns logical, \code{TRUE} if object has full set of (unique) names.
-#' @author Andrew Roberts
-has_names <- function(x, check_unique_names=TRUE) {
-  !is.null(names(x)) &&
-  length(names(x)) == length(x) &&
-  all(nzchar(names(x))) && # Ensure no "" names.
-  (!check_unique_names || !anyDuplicated(names(x)))
 }
 
 
