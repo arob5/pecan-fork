@@ -281,6 +281,65 @@ metadata_names.ModelInput <- function(x, ...) {
 }
 
 
+#' Add Slot Generic
+#'
+#' Adds a new slot with name specified by \code{name}. The value for this slot
+#' is set to \code{value}, which defaults to \code{NULL}.
+#' Defined for both single \code{ModelInput} and \code{EnsembleInput}.
+#'
+#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
+#' @param name character(1), the name of the slot. Cannot conflict with existing
+#'  slot names.
+#' @param value An R object, the value to assign to the new slot. Defaults to 
+#'  \code{NULL}.
+#' @param ... Further arguments passed to methods.
+#'
+#' @returns \code{x}, with the new slot added.
+#' @seealso \code{\link{add_slot.ModelInput}}
+#' 
+#' @author Andrew Roberts
+#' @export
+add_slot <- function(x, name, value=NULL, ...) {
+  UseMethod("add_slot")
+}
+
+
+#' @export
+add_slot.default <- function(x, name, value=NULL, ...) {
+  raise_default_method_error(x, "add_slot")
+}
+
+
+#' Add New Slot to a ModelInput
+#'
+#' Adds a new slot to a \code{ModelInput} object with name specified by 
+#' \code{name}. The value for this slot is set to \code{value}, which defaults 
+#' to \code{NULL}. Defined for both single \code{ModelInput} and \code{EnsembleInput}.
+#'
+#' @param x A \code{ModelInput} object.
+#' @param name character(1), the name of the slot. Cannot conflict with existing
+#'  slot names.
+#' @param value An R object, the value to assign to the new slot. Defaults to 
+#'  \code{NULL}.
+#' @param ... Further arguments passed to methods.
+#'
+#' @returns \code{x}, with the new slot added.
+#' 
+#' @author Andrew Roberts
+#' @export
+add_slot.ModelInput <- function(x, name, value=NULL, ...) {
+  
+  if(name %in% slot_names(x)) {
+    stop("Slot `", name, "` already exists.")
+  }
+  
+  x$slots[[name]] <- value
+  validate_model_input(x)
+  
+  return(x)
+}
+
+
 #' @export
 print.ModelInput <- function(x, ...) {
   cat("<ModelInput>\n")
