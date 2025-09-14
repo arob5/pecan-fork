@@ -1,8 +1,6 @@
 # forward/ensemble_input_table.r
-
-# Constants
-SLOT_PREFIX <- "slot_"
-METADATA_PREFIX <- "metadata_"
+#
+# Depends: model_input.r, ensemble_input.r, ensemble_input_list.r, ensemble_input_broadcast.r
 
 #' Construct ensemble model input in table format
 #' 
@@ -134,26 +132,26 @@ is_ensemble_input_table <- function(x) {
 #' @author Andrew Roberts
 #' @export
 validate_ensemble_input_table <- function(x) {
-  if(!is_ensemble_input_table(obj)) {
-    stop("`obj` is not an `EnsembleInputTable` object.")
+  if(!is_ensemble_input_table(x)) {
+    stop("`x` is not an `EnsembleInputTable` object.")
   }
   
-  if(!tibble::is_tibble(obj)) {
+  if(!tibble::is_tibble(x)) {
     stop("EnsembleInputTable must be a tibble.")
   }
   
-  if(!("run_id" %in% names(obj))) {
+  if(!("run_id" %in% names(x))) {
     stop("`EnsembleInputTable$run_id` column is missing.")
   }
   
-  if(!dplyr::n_distinct(df$run_id) == nrow(df)) {
+  if(!dplyr::n_distinct(x$run_id) == nrow(x)) {
     stop("`EnsembleInputTable$run_id` contains duplicate values.")
   }
   
   tagged_cols <- c("run_id", 
-                   .get_col_block_names(obj, SLOT_PREFIX, strip_prefix=FALSE),
-                   .get_col_block_names(obj, METADATA_PREFIX, strip_prefix=FALSE))
-  invalid_cols <- setdiff(names(obj), tagged_cols)
+                   .get_col_block_names(x, SLOT_PREFIX, strip_prefix=FALSE),
+                   .get_col_block_names(x, METADATA_PREFIX, strip_prefix=FALSE))
+  invalid_cols <- setdiff(names(x), tagged_cols)
     
   if(length(invalid_cols) > 0L) {
     stop("EnsembleInputTable columns must be `run_id` or tagged with ",

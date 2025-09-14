@@ -1,0 +1,281 @@
+---
+title: "run_model_intro"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+
+base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
+code_dir <- file.path(base_dir, "R")
+fwd_dir <- file.path(code_dir, "forward_model")
+
+source(file.path(code_dir, "utils.r"))
+source(file.path(code_dir, "types.r"))
+source(file.path(fwd_dir, "broadcast_rules.r"))
+source(file.path(fwd_dir, "model_input.r"))
+source(file.path(fwd_dir, "run_model_api.r"))
+source(file.path(fwd_dir, "ensemble_input.r"))
+source(file.path(fwd_dir, "ensemble_input_list.r"))
+source(file.path(fwd_dir, "ensemble_input_table.r"))
+source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
+```
+
+This vignette provides an introduction to the standardized interface for
+running models. A *model* is viewed generically as an operation that maps
+inputs to outputs. This tutorial describes:
+1. The `ModelInput` class  
+2. The `run_model()` interface  
+3. The use of `EnsembleInput` and `run_model_ensemble()` to vectorize a model
+over multiple inputs.
+
+# A Standard Representation of Model Inputs
+
+A model input is generically viewed as a container, possessing multiple 
+input types; i.e., "slots". This broad definition is encoded by the 
+`ModelInput` class.
+
+We start by considering a model input consisting of two slots, which store 
+a numeric scalar and square matrix, respectively. The model input object
+can also store associated metadata via a named list.
+
+```{r}
+metadata_list <- list(note = "some metadata")
+
+model_input <- ModelInput(x = 1.0, 
+                          y = diag(rep(1,2)),
+                          metadata=metadata_list)
+
+print(model_input)
+```
+
+The input values for the various input slots can be accessed via `slots()`,
+which returns a list of the slots.
+
+```{r}
+slots(model_input)
+```
+
+The metadata is similarly accessed via `metadata()`.
+
+```{r}
+metadata(model_input)
+```
+
+These values can also be obtained using the list notation `model_input$slots`
+and `model_input$metadata`.
+The `slot_names()`, `metadata_names()`, and `n_slots()` methods also query 
+information about the model input.
+
+```{r}
+slot_names(model_input)
+metadata_names(model_input)
+n_slots(model_input)
+```
+
+A new slot may be added after a model input is already created via the
+`add_slot()` method. The new slot name must not conflict with an existing
+slot name.
+
+```{r}
+try(add_slot(model_input, "x"))
+```
+
+Suppose we want to extend our model to have a third input `z`. We can add this 
+slot, and immediately set its value as follows.
+
+```{r}
+model_input <- add_slot(model_input, "z", 2.0)
+
+print(model_input)
+print(paste0("Value of new slot: ", slots(model_input)$z))
+```
+
+# Running a Model
+A model is simply defined as an operation that takes in a `ModelInput`
+object and returns an output. The `run_model(model_obj, model_input, ...)`
+generic provides a standardized API, for which methods can be defined
+for particular run model mechanisms. In this tutorial, we discuss the 
+simplest setting in which `model_obj` is an R function. Custom methods 
+can be defined for more complicated cases where the model execution requires
+running external code, interacting with a computing cluster, etc.
+
+The `run_model.function` method is already defined, so we need only define
+the R function that represents the model map. We consider a toy example here.
+
+```{r}
+f <- function(model_input) {
+  val <- slots(model_input)
+  val$x + val$y + val$z
+}
+```
+
+We can now run the model at the input we defined earlier.
+
+```{r}
+run_model(f, model_input)
+```
+
+
+# Model Ensemble
+We define a model ensemble as a set of runs of a particular model at different
+inputs. The `EnsembleInput` class provides a standardized container to hold
+the set of inputs. This class represents an ordered set of `ModelInput` objects,
+which can be stored using one of three underlying data structures: a list,
+table, or implicitly via a "broadcast rule". We briefly introduce these
+representations here. The functionality built into `EnsembleInput` is 
+explained in more depth in other tutorials.
+
+## List of Model Inputs
+
+The simplest data structure used to encode `EnsembleInput` is a list of `ModelInput` objects.
+
+```{r}
+model_input_2 <- ModelInput(x = 2.0, 
+                            y = 2*diag(rep(2,2)),
+                            z = 4.0)
+
+ens_input <- EnsembleInput(list(model_input, model_input_2))
+summary(ens_input)
+print(class(ens_input))
+```
+Each model input is associated with a particular "run" of the model, and 
+assigned a corresponding unique `run_id`. We could have manually specified
+run IDs by adding a names attribute to the list passed into the 
+`EnsembleInput` constructor. Since we didn't do this, default run IDs were
+generated for us.
+
+```{r}
+run_ids(ens_input)
+```
+
+In addition to uniquely identifying each run, the run IDs define the order
+of the `EnsembleInput` object. The default method for generating 
+ensemble runs will perform each run serially in this order.
+
+```{r}
+run_model_ensemble(f, ens_input)
+```
+We can view the inputs for each run on a slot-by-slot level by converting
+to a table format.
+
+```{r}
+as_ensemble_input_table(ens_input)
+```
+
+By default, the columns other than `run_id` are list columns, which accomodate
+arbitrary structured objects. 
+
+The `ModelInput` objects within an `EnsembleInput` are not required to all 
+have the same slots. Let's consider adding another input that lacks the
+`z` slot. We will have to also update our previous model, which assumed
+the `z` slot was present. We also add custom run IDs this time.
+
+```{r}
+model_input_3 <- ModelInput(x = 0.0, 
+                            y = diag(rep(2,2)))
+
+f <- function(model_input) {
+  val <- slots(model_input)
+  Reduce(sum, val)
+}
+
+
+ens_input <- EnsembleInput(list(id1 = model_input, 
+                                id2 = model_input_2, 
+                                id3 = model_input_3))
+summary(ens_input)
+print(run_ids(ens_input))
+```
+
+The summary is telling us that there are 3 total slots, and the printed slots
+represent the union of all slots over the inputs. We can view input-by-input
+slot information as follows.
+
+```{r}
+slot_names(ens_input, unique_only=FALSE)
+```
+We can fetch the `ModelInput` corresponding to a particular `run_id` using 
+`get_run_input()`.
+
+```{r}
+run_id3 <- get_run_input(ens_input, "run_1")
+
+print(run_id3)
+print(run_id3$slots)
+```
+
+Here are the results of the new model ensemble run.
+
+```{r}
+run_model_ensemble(f, ens_input)
+```
+
+
+## Broadcasted Model Inputs
+
+The list representation is intuitive and reasonable when one has a pre-defined
+set of model inputs. In other cases, one may need to construct a large
+ensemble of inputs, where certain slot values may be repeated across many
+different runs. In this case, list or table representations are inefficient
+as they store this duplicate information. An `EnsembleInputBroadcast` class 
+provides a more efficient representation. It is defined by specifying 
+a unique set of values in each slot, along with a "broadcast rule" that 
+describes how to construct runs by combining the inputs. 
+
+Let's consider an example where a model is run at different spatial 
+locations (sites), and the model requires a site-specific input. Let's
+also suppose that we want to run ensembles at each site in which model
+parameters and initial conditions are varied. The parameter ensemble is
+site-invariant, while the initial condition ensemble varies by site. 
+In place of real inputs, we'll store all of this information as strings
+for easy visualization later. We use the convention `ici_j` for the 
+`jth` member of the initial condition ensemble at site `i`.
+
+```{r}
+slot_list <- list(
+  site = list("s1", "s2", "s3"),
+  ic = list("ic1_1", "ic2_1", "ic3_1", "ic1_2", "ic2_2", "ic3_2"),
+  param = list("p1", "p2")
+)
+
+# Create new broadcast rule
+rule <- get_composite_rule(groups=list(c(1,2), c(3)), # slot groups: (site, ic), (param)
+                           rules=list(rule_recycle, rule_match))
+
+ens_input <- EnsembleInput(rule, slot_list)
+
+summary(ens_input)
+print(class(ens_input))
+```
+The main object stored by an `EnsembleInputBroadcast` is an index matrix
+that assigns slot values to particular runs.
+
+```{r}
+ens_input$idx_mat
+```
+
+Attaching string labels makes this easier to understand. The print method
+of `EnsembleInputBroadcast` provides exactly this.
+
+```{r}
+ens_input
+```
+
+We can run a model ensemble exactly as before. Let's define a forward model that 
+simply appends the input strings, so that we can easily visualize the output.
+
+
+```{r}
+
+f <- function(model_input) {
+  slot_list <- slots(model_input)
+  paste0(unlist(slot_list), collapse=" | ")
+}
+
+run_model_ensemble(f, ens_input)
+```
+
+
+
+

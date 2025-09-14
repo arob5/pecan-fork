@@ -1,5 +1,9 @@
 # forward_model/model_input.r
 
+# Constants: prefixes used to mark values as model input slots or metadata.
+SLOT_PREFIX <- "slot_"
+METADATA_PREFIX <- "metadata_"
+
 #' Model Input Class Constructor
 #'
 #' Creates a new \code{ModelInput} object, which is a container for
@@ -337,6 +341,55 @@ add_slot.ModelInput <- function(x, name, value=NULL, ...) {
   validate_model_input(x)
   
   return(x)
+}
+
+
+#' Get Slot Generic
+#'
+#' Extracts the value(s) of a particular input slot from a \code{ModelInput}
+#' or \code{EnsembleInput}.
+#'
+#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
+#' @param name character(1), the name of the slot.
+#' @param ... Further arguments passed to methods.
+#'
+#' @returns The value(s) of the slot. See specific methods for details.
+#' @seealso \code{\link{get_slot.ModelInput}}
+#' 
+#' @author Andrew Roberts
+#' @export
+get_slot <- function(x, name, ...) {
+  UseMethod("get_slot")
+}
+
+
+#' @export
+get_slot.default <- function(x, name, ...) {
+  raise_default_method_error(x, "get_slot")
+}
+
+
+#' Get Value from Input Slot in a ModelInput
+#'
+#' Return a value from a named slot.
+#' 
+#' @param x A \code{ModelInput} object.
+#' @param name character(1), the slot name.
+#' @param err_if_missing logical(1), if \code{TRUE} (default) throws error if 
+#'  \code{name} is not a valid slot name. Otherwise will return \code{NULL} in
+#'  the case that the slot does not exist.
+#'
+#' @returns The value in the slot with name \code{name}.
+#' 
+#' @author Andrew Roberts
+#' @export
+get_slot.ModelInput <- function(x, name, err_if_missing=TRUE) {
+  
+  if(err_if_missing && !(name %in% slot_names(x))) {
+    stop("Slot `", namd, "` not found in ModelInput.")
+  }
+  
+  slots(x)[[name]]
 }
 
 

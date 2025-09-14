@@ -86,7 +86,6 @@ ens_input <- EnsembleInput(list(input1, input2))
 summary(ens_input)
 ```
 
-
 The inputs are not required to all have the same input slots. We can access
 the union of the slots across all inputs, or a list of the slots for each input.
 

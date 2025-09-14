@@ -136,7 +136,7 @@ EnsembleInput.function <- function(broadcast_rule, slots) {
   if(!xor(is.null(idx_mat), is.null(broadcast_rule))) {
     stop("Exactly one of `idx_mat` and `broadcast_rule` must be NULL.")
   }
-  
+
   # Construct the index matrix by applying the broadcast rule.
   if(is.null(idx_mat)) idx_mat <- .broadcast_slots(slots, broadcast_rule)
   
@@ -273,9 +273,9 @@ validate_ensemble_input_broadcast <- function(x) {
   if(ncol(idx_mat) > 0L) {
     for(j in seq_len(ncol(idx_mat))) {
       max_idx <- length(slots[[j]])
-      if(!all(idx_mat[[j]] >= 1L & idx_mat[[j]] <= max_idx)) {
+      if(!all(idx_mat[,j] >= 1L & idx_mat[,j] <= max_idx)) {
         stop("`idx_mat` contains invalid entries in column ", j,
-             " Entries must be between 1 and length(slots[[j]]) = ", max_idx)
+             " Entries must be between 1 and length(slots[[", j, "]]) = ", max_idx)
       }
     }
   }
@@ -424,7 +424,10 @@ get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
 #' @export
 get_labeled_idx_mat <- function(x) {
   check_ensemble_input_broadcast_type(x)
-  visualize_slot_grid(x$idx_mat, slot_names(x))
+  run_table <- visualize_slot_grid(x$idx_mat, slot_names(x))
+  rownames(run_table) <- rownames(x$idx_mat)
+  
+  return(run_table)
 }
 
 
@@ -444,3 +447,13 @@ get_labeled_idx_mat <- function(x) {
   lens <- vapply(slots, length, integer(1))
   broadcast_rule(lens)
 }
+
+
+#' @export
+print.EnsembleInputBroadcast <- function(x, ...) {
+  cat("<EnsembleInputBroadcast>\n")
+  print(get_labeled_idx_mat(x))
+}
+
+
+

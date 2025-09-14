@@ -239,6 +239,72 @@ summary.EnsembleInput <- function(x, ...) {
 }
 
 
+#' Run Model at Each Model Input in Ensemble
+#'
+#' Calls  \code{run_model(model_obj, model_input, ...)} for each \code{ModelInput}
+#' in \code{EnsembleInput}. Returns a list of the results of each call.
+#'
+#' @details
+#' \code{run_model(model_obj, model_input, ...)} is the run model generic;
+#' specific methods are dispatched based on the class of \code{model_obj}, which
+#' encodes the model.
+#' 
+#' @param ens_input An \code{EnsembleInput} object.
+#' @param model_obj An R object, for which a \code{run_model()} method is defined.
+#' @param ... Additional arguments passed to \code{run_model()}.
+#' 
+#' @returns list of length \code{n_runs(ens_input)}. The order is determined
+#'  by the order of \code{run_ids(ens_input)}, and these run IDs are assigned
+#'  as the names attribute of the returned list. Element \code{i} of the
+#'  returned list contains the output of the call 
+#'  \code{run_model(model_obj, get_run_input(ens_input, run_ids(ens_input)[i]), ...)}.
+#'  
+#' @seealso \code{\link{lapply_ensemble_input}}, \code{\link{run_model}}
+#'
+#' @author Andrew Roberts
+#' @export
+lapply_model_ensemble_run <- function(ens_input, model_obj, ...) {
+  
+  check_ensemble_input_type(ens_input)
+  
+  model_func <- function(model_input, ...) run_model(model_obj, model_input, ...)
+  lapply_ensemble_input(ens_input, model_func, ...)
+}
+
+
+#' Apply Function to Each Model Input in Ensemble
+#'
+#' Given a function \code{func} with signature \code{func(model_input, ...)},
+#' applies the function to each \code{ModelInput} object in the 
+#' \code{EnsembleInput} and returns the results of these calls in a list of
+#' length \code{n_runs(ens_input)}.
+#' 
+#' @returns list of length \code{n_runs(ens_input)}. The order is determined
+#'  by the order of \code{run_ids(ens_input)}, and these run IDs are assigned
+#'  as the names attribute of the returned list. Element \code{i} of the
+#'  returned list contains the output of the call 
+#'  \code{func(get_run_input(ens_input, run_ids(ens_input)[i]), ...)}.
+#' @seealso \code{\link{lapply_model_ensemble_run}}
+#'
+#' @author Andrew Roberts
+#' @export
+lapply_ensemble_input <- function(ens_input, func, ...) {
+  
+  check_ensemble_input_type(ens_input)
+  
+  apply_func_to_run <- function(run_id) {
+    model_input <- get_run_input(ens_input, run_id)
+    func(model_input, ...)
+  }
+  
+  r_ids <- run_ids(ens_input)
+  results <- lapply(r_ids, apply_func_to_run)
+  names(results) <- r_ids
+  
+  return(results)
+}
+
+
 #' Error when a requested run ID is not present
 #' 
 #' @author Andrew Roberts

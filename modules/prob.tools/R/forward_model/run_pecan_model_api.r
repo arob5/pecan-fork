@@ -1,4 +1,6 @@
 # forward_model/run_model_api.r
+#
+# Depends: PEcAn.settings, PEcAn.utils
 
 # Implements standardized protocols for running PEcAn models, ensuring a 
 # consistent interface for specifying outputs and returning outputs in a standard
@@ -10,10 +12,13 @@
 # a set of model runs of a model, with each run using (potentially) different inputs.
 #
 # APIs for single model run:
-#   prep_model_run(), run_model(), run_model_and_read_output()
+#   run_model(), prep_pecan_model_run(), start_pecan_model_run()    
 # 
 # APIs for ensemble model run:
-#   prep_model_ensemble_run(), run_model_ensemble(), run_model_ensemble_and_read_output()
+#   run_model_ensemble(), prep_pecan_ensemble_run(), start_pecan_ensemble_run()
+#
+# `run_model.Settings()` and `run_model_ensemble.Settings()` are the PEcAn methods
+# for the run model and run model ensemble generics.
 
 
 #' Run a PEcAn model and return outputs
@@ -25,7 +30,7 @@
 #' At present, this API is defined so that PEcAn's standard model run workflow
 #' can be executed without modification. A PEcAn model execution requires 
 #' the inputs \code{trait.values}, \code{run.id}, and \code{settings}. 
-#' PEcAn settings objects contain settings beyond those necessary to run the
+#' PEcAn \code{Settings} objects contain settings beyond those necessary to run the
 #' model. Thus, to be more specific, the \code{settings} input is typically used
 #' to specify required driver (meteorology) and initial condition (IC) inputs
 #' via the fields \code{settings$run$inputs$met, settings$run$inputs$poolinitcond}.
@@ -38,7 +43,7 @@
 #' }
 #'     
 #' The PEcAn workflow allows users to manually pass in model parameters via
-#' the \code{trait.values} argument. Some models allow manual specification
+#' the \code{trait.values} argument. Some models allow runtime specification
 #' of other model inputs (e.g., initial conditions).
 #' 
 #' To respect the PEcAn workflow structure, the run model API is structured as follows:  
@@ -48,14 +53,32 @@
 #'  \item \code{settings$rundir}: directory to which config files will be saved.
 #' }
 #'
+#' @param settings A PEcAn \code{Settings} object.
+#' @param model_input A \code{ModelInput} object.
+#' @param run_id character(1), a unique string identifier for the run. Will be 
+#'  auto-generated if not provided.
+#' @param overwrite_runs_file logical(1), if \code{TRUE}, overwrites any existing
+#'  \code{runs.txt} file in the run directory. Otherwise, appends to this file.
+#'  If appending, note that any runs executed from this directory using
+#'  \code{PEcAn.workflow::start_model_runs()} will run both the newly appended
+#'  and old runs. Even in this case, this method will still only return the 
+#'  results associated with \code{run_id}, the current run. 
+#' @param ... Additional arguments passed to \code{PEcAn.utils::read.output()}.
+#'
+#' @returns The model outputs corresponding to the model run with ID \code{run_id}.
+#'  The outputs are formatted as returned by \code{PEcAn.utils::read.output()}.
+#'  An attribute \code{run_id} is attached to the output object.
+#'  
+#' @author Andrew Roberts
+#' @export
 run_model.Settings <- function(settings, model_input, run_id=NULL, 
                                overwrite_runs_file=FALSE, ...) {
   
-  # Start model run, write outputs to file.
-  run_id <- exec_pecan_model(settings=settings,
-                             model_input=model_input,
-                             run_id=run_id,
-                             overwrite_runs_file=overwrite_runs_file)
+  # Write configs, start model run, write outputs to file.
+  run_id <- start_pecan_model_run(settings=settings,
+                                  model_input=model_input,
+                                  run_id=run_id,
+                                  overwrite_runs_file=overwrite_runs_file)
   
   # Read outputs from file.
   run_output_path <- file.path(settings$modeloutdir, run_id)
@@ -67,9 +90,66 @@ run_model.Settings <- function(settings, model_input, run_id=NULL,
 }
 
 
-run_model_ensemble.Settings <- function(model_settings, ens_input, ...) {
-  .NotYetImplemented()
+run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL, 
+                                        overwrite_runs_file=FALSE, ...) {
+  
+  # Read output into list.
+  model_ens_output <- lapply(run_ids, 
+                                  function(run_id) PEcAn.utils::read.output(run_id, 
+                                                                            outdir=output_path(ensemble_input, run_id), 
+                                                                            variables=variables, ...))
+  names(model_ens_output) <- run_ids
+  
+  return(model_ens_output)
 }
+
+
+#' Write Configuration Files to Disk
+#' 
+#' Writes inputs for a PEcAn model to file, and writes the \code{run_id} to the
+#' \code{runs.txt} file. Does not actually run the model - prepares the model
+#' for execution using \code{PEcAn.workflow::start_model_runs()}.
+#'
+#'  
+#' @returns Invisibly returns the \code{run_id}. Loads the PEcAn model package
+#'  and uses the write config function from this package to write configuration
+#'  files to disk.
+prep_pecan_model_run <- function(settings, model_input, run_id=NULL, 
+                                 overwrite_runs_file=FALSE, ...) {
+
+  # If run ID is not provided, randomly generate one.
+  if(is.null(run_id) || is.na(run_id)) run_id <- uuid::UUIDgenerate()
+  
+  # Overwrite defaults in `settings` with values specified in `model_input`.
+  settings <- overwrite_default_settings(settings, model_input)
+  
+  # Load model package.
+  PEcAn.utils::load.modelpkg(settings$model$type)
+  
+  # Create run and output directories.
+  dir.create(file.path(settings$rundir, run_id), recursive=TRUE)
+  dir.create(file.path(settings$modeloutdir, run_id), recursive=TRUE)
+  
+  # Write model config to file.
+  model_write_config <- paste0("write.config.", settings$model$type)
+  
+  write_config_args <- list(settings=settings, defaults=settings$pfts, run.id=run_id)
+  write_config_args <- c(write_config_args, pecan_runtime_slots(model_input))
+  do.call(model_write_config, args=write_config_args)
+  
+  # Either append to or overwrite existing "runs.txt" file.
+  cat(as.character(run_id),
+      file=file.path(settings$rundir, "runs.txt"),
+      sep="\n",
+      append=!overwrite_runs_file)
+  
+  return(invisible(run_id))
+}
+
+
+
+
+
 
 
 
