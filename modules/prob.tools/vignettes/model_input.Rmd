@@ -11,9 +11,10 @@ code_dir <- file.path(base_dir, "R")
 fwd_dir <- file.path(code_dir, "forward_model")
 
 source(file.path(code_dir, "utils.r"))
+source(file.path(code_dir, "types.r"))
 source(file.path(fwd_dir, "broadcast_rules.r"))
 source(file.path(fwd_dir, "model_input.r"))
-source(file.path(fwd_dir, "ensemble_model_input.r"))
+source(file.path(fwd_dir, "ensemble_input.r"))
 source(file.path(fwd_dir, "ensemble_input_list.r"))
 source(file.path(fwd_dir, "ensemble_input_table.r"))
 source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
@@ -21,202 +22,158 @@ source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
 
 
 # Representing a Single Model Input
-
 The `ModelInput` class encodes the set of inputs required to run a model.
-It is a simple container with elements *slots* and *metadata*, both of which
-are named lists (or empty lists). The slots correspond to different pieces of 
-the input (e.g., parameters, initial conditions, a filepath to data, etc.)
+It is a container with *input slots* ("slots" for short) and *metadata*, 
+both of which are named lists with well-specified orders. Input slots
+are different types or pieces of the input, making up the bits that comprise
+the full set of inputs required to run a model. The metadata is structured the
+same as the inputs, but is reserved for side information that does not 
+constitute a true model input.
 
-Let's start by considering a model input consisting of two slots: 
-(1) `param`, a vector of scalar parameters, and (2) `data_path`, a file path 
-to some required input data.
+Under the hood, a `ModelInput` is actually a tree-like data structure; the
+leaves are the tree consist of the union of all input slots and metadata.
+Input slots and metadata are allowed to be any R object (vectors, arrays,
+lists, etc.).
 
-```{r}
-input <- ModelInput(param = c(a=1, b=2),
-                    data_path = "path/to/data",
-                    metadata = list(input_id = 1L))
-print(input)
-print(class(input))
-```
+## Input Slot
 
-Helper functions and methods are defined to extract slots, metadata, and their 
-names.
+The `InputSlot` class is a light wrapper around an R object used to tag that
+object as an input slot.
 
 ```{r}
-slot_names(input)
-metadata_names(input)
-slots(input)
-metadata(input)
+x <- InputSlot(4)
+y <- InputSlot(list(1,2, list(3,4)))
+z <- InputSlot(array(1:12, dim=c(2,3,2)))
+
+print(x)
+cat("\n")
+print(y)
+cat("\n")
+print(z)
 ```
 
-Attempting to create unnamed slots (or metadata) will result in an error,
+The raw value of the object can be accessed via the `value` field.
+```{r}
+x$value
+```
+
+## Input Slot
+
+The `MetadataSlot` class is structurally exactly the same as `InputSlot` but is
+instead used to label an object as metadata.
 
 ```{r}
-input <- try(ModelInput(param=2, "unnamed_slot"))
-print(input)
+a <- MetadataSlot(1:4)
+print(a)
 ```
-but empty inputs are allowed.
+
+## Constructing a ModelInput Object
+A `ModelInput` is a tree in which all leaves of the tree are either of type 
+`InputSlot` or `MetadataSlot`. A `ModelInput` object is typically instantiated
+by providing a nested list to the `ModelInput` constructor. A nested list
+is by itself an ambiguous representation of a tree, as it is unclear whether
+a sub-list should represent a leaf or another branch of the tree. `ModelInput`
+thus imposes the following rules:  
+1. Any object of type `InputSlot` or `MetadataSlot` is a leaf.  
+2. Any non-list object that is not tagged as one of these slots is assumed to 
+be an `InputSlot` by default. This default can be overridden by passing
+`untagged_is_slot = FALSE` to the constructor.
+
+The following examples illustrate the consequences of these rules.
 
 ```{r}
-input <- ModelInput()
-print(input)
+x <- list(a=1, b=2, c=c(3,4), d=list(e=5,f=6, g=list(h=1)), i=matrix(1:4))
+y <- list(a=MetadataSlot(1), b=2, c=c(3,4), d=InputSlot(list(e=5,f=6, g=list(h=1))), i=matrix(1:4))
+z_list <- list(a=1, b=2, c=c(3,4), d=list(e=5,f=MetadataSlot(6), g=InputSlot(list(h=1))), i=matrix(1:4))
+
+x <- ModelInput(x)
+y <- ModelInput(y)
+z <- ModelInput(z_list)
+z_prime <- ModelInput(z_list, untagged_is_slot=FALSE)
+
+
+cat("x:\n")
+summary(x)
+
+cat("\ny:\n")
+summary(y)
+
+cat("\nz:\n")
+summary(z)
+
+cat("\nz_prime:\n")
+summary(z_prime)
 ```
-
-# Representing a Collection of Model Inputs
-
-A collection of model inputs can be combined into an `EnsembleInput` object.
-This is the primary building block for constructing vectorized, or *ensemble*
-model runs. `EnsembleInput` objects can be stored in three different
-formats, which each may be preferred in certain contexts. A common constructor
-can be used to generate these objects in the three formats, and methods are 
-provided to easily convert between the three. We discuss each representation
-below.
-
-## List Representation
-
-The simplest data structure used to encode `EnsembleInput` is a list of `ModelInput` objects.
+All nodes in a `ModelInput` are required to be named, with unique names at each
+level of the tree. The names are used to construct unique keys of the form
+`node_lvl1/node_lvl2/node_lvl3` for each node. As shown above, the `summary`
+method prints these keys for all leaves, differentiating between input slots
+and metadata. Trying to produce a tree with duplicate names at the same level
+will produce an error.
 
 ```{r}
-input1 <- ModelInput(param = c(a=1, b=2),
-                     data_path = "path/to/data")
-input2 <- ModelInput(param = c(a=10, b=20),
-                     data_path = "path/to/data2")
-
-ens_input <- EnsembleInput(list(input1, input2))
-summary(ens_input)
+x <- list(a=1, b=list(c=2, d=list(e=3, e=4)))
+try(ModelInput(x))
 ```
 
-The inputs are not required to all have the same input slots. We can access
-the union of the slots across all inputs, or a list of the slots for each input.
+A more detailed visualization of the tree can be produced with `print_tree()`,
+which optionally prints the class of the leaf values.
 
 ```{r}
-input1 <- ModelInput(param = c(a=1, b=2),
-                     data_path = "path/to/data",
-                     metadata=list(extra_info = "info"))
-
-input2 <- ModelInput(param = c(a=10, b=20),
-                     data_path = "path/to/data2",
-                     ic = list(ic1=0, ic2=100, ic3=50))
-
-ens_input <- EnsembleInput(list(input1, input2))
-summary(ens_input)
-
-# Print union of slot names
-slot_names(ens_input)
-
-# Print list of slot names for each input
-slot_names(ens_input, unique_only=FALSE)
-
-# Same deal with metadata
-metadata_names(ens_input)
-metadata_names(ens_input, unique_only=FALSE)
+print_tree(z, include_leaf_class=TRUE)
 ```
+## Flat List Representation
 
-Each input/run is associated with a run ID. We could have specified these 
-above by passing in a named list `list(run1=input1, run2=input2)` to the 
-`EnsembleInput` constructor. If no names are specified, the constructor 
-sets default run IDs.
+While the tree representation is useful for organizing input types, ultimately
+only a flat (non-nested) list of input slots is required for interfacing with
+the model runner APIs.
+
+A flattened list containing all leaves can be obtained using `flatten_model_input()`.
+The traversal order is always left-to-right, depth first.
 
 ```{r}
-run_ids(ens_input)
+flatten_model_input(z)
 ```
 
-The number of runs and number of slots can be queried using `n_runs()`
-and `n_slots()`. The `dim` method returns a tuple containing these two numbers.
+Helper functions are also provided to contain flattened lists of only input
+slots and metadata, respectively. By default, these function strip the 
+`InputSlot` or `MetadataSlot` class attribute from the returned values, but
+this default can be overwritten by passing `return_raw_values=FALSE`.
 
 ```{r}
-n_runs(ens_input)
-n_slots(ens_input)
-dim(ens_input)
+cat("Reminder of input structure:\n")
+summary(z)
+
+cat("\nFlattened input slots:\n")
+flatten_input_slots(z)
+
+cat("\nFlattened metadata slots:\n")
+flatten_metadata_slots(z)
 ```
 
-## Table Representation
-
-The ensemble input can alternatively be stored in a table, with one row per 
-model input (i.e., one row per run). The column name prefixes `slot_`
-and `metadata_` are used to identify slot and metadata columns, respectively.
-A special column named `run_id` stores the associated run IDs. All metadata
-and slot columns are stored as "tibble" list columns, which allows storing
-arbitrary structured objects.
+The flat representation can be re-constructed by passing separate flattened
+lists for the input slots and metadata, with the keys specified in the 
+list names. Crucially, flattening and then unflattening preserves the order
+the input slots and metadata slots within each of these groups. However, it 
+does not necessarily preserve the overall order of the leaves. As the tree
+nodes are all required to be named, it is generally recommended to rely on 
+names instead of order. However, it may be important to preserve the input
+slot order in certain applications.
 
 
 ```{r}
-ens_input <- as_ensemble_input_table(ens_input)
+cat("\nOriginal model input:\n")
+summary(z)
+cat("\nwith leaf order:\n")
+leaf_names(z)
 
-summary(ens_input)
-print(class(ens_input))
+flat_input_slots <- flatten_input_slots(z)
+flat_metadata_slots <- flatten_metadata_slots(z)
+
+z_new <- unflatten_model_input(flat_input_slots, flat_metadata_slots)
+
+cat("\nRe-constructed model input:\n")
+summary(z_new)
+cat("\nwith leaf order:\n")
+leaf_names(z_new)
 ```
-
-The same methods for accessing slot names, metadata names, and run IDs work when 
-the ensemble input is in the table format.
-
-```{r}
-slot_names(ens_input)
-metadata_names(ens_input)
-run_ids(ens_input)
-
-n_runs(ens_input)
-n_slots(ens_input)
-dim(ens_input)
-```
-An `EnsembleInputTable` object is a tibble, so we can dispatch standard tibble
-and data.frame methods for manipulating the table.
-
-```{r}
-print(ens_input)
-```
-
-## Broadcast Representation
-
-The downside of both the table and list representations are they both
-store redundant information when some slot values are utilized in multiple runs.
-The broadcast representation addresses this shortcoming, storing only a unique
-set of values for each slot, along with a broadcast rule that encodes how to 
-construct the runs from the slot values.
-
-```{r}
-slots <- list(
-  site = list("s1", "s2", "s3"),
-  ic = list("ic1_1", "ic2_1", "ic3_1", "ic1_2", "ic2_2", "ic3_2"),
-  param = list("p1", "p2")
-)
-
-# Create new broadcast rule
-rule <- get_composite_rule(groups=list(c(1,2), c(3)), # slot groups: (site, ic), (param)
-                           rules=list(rule_recycle, rule_match))
-
-ens_input <- EnsembleInput(rule, slots)
-
-summary(ens_input)
-print(class(ens_input))
-```
-
-The runs are internally defined by an matrix of indices.
-
-```{r}
-ens_input$idx_mat
-```
-
-This is easier to understand with some text labels attached in place of the 
-integer indices.
-
-```{r}
-get_labeled_idx_mat(ens_input)
-```
-
-We can convert to an `EnsembleInputTable` to fill the table with the actual 
-slot values, rather than string labels for each value. 
-
-```{r}
-tbl <- as_ensemble_input_table(ens_input)
-
-summary(tbl)
-head(tbl)
-```
-
-
-
-
-
-
-

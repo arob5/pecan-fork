@@ -1,66 +1,77 @@
 # forward_model/model_input.r
 
-# Constants: prefixes used to mark values as model input slots or metadata.
-SLOT_PREFIX <- "slot_"
-METADATA_PREFIX <- "metadata_"
-
-#' Model Input Class Constructor
-#'
-#' Creates a new \code{ModelInput} object, which is a container for
-#' model inputs (called "slots") and optional metadata. Each slot is
-#' a named element (e.g., \code{param}, \code{ic}, \code{driver})
-#' storing an R object. Metadata can be used for provenance, units, 
-#' or other information.
-#'
-#' @param ... Named arguments representing the slots required by a model.
-#'   For example, \code{param}, \code{ic}, \code{driver}.
-#' @param metadata Optional named list of metadata to store alongside
-#'   the slots.
-#'
-#' @return An object of class \code{ModelInput}.
-#'
-#' @examples
-#' # Simple parameter set
-#' mi1 <- ModelInput(param = c(a=1, b=2))
-#'
-#' # With additional initial conditions
-#' mi2 <- ModelInput(param = c(a=2, b=5),
-#'                   ic = list(x=0, y=0))
-#'
-#' # With metadata
-#' mi3 <- ModelInput(param = c(a=3), metadata = list(units = "unitless"))
-#'
-#' slots(mi2)
-#' metadata(mi3)
-#' 
-#' @seealso \code{\link{EnsembleInput}}
-#' @author Andrew Roberts
-#' @export
-ModelInput <- function(..., metadata=list()) {
-  slots <- list(...)
-  x <- .new_model_input(slots, metadata)
-  validate_model_input(x)
-  
-  return(x)
+InputSlot <- function(x) {
+  structure(list(value=x), class="InputSlot")
 }
 
 
-#' Internal constructor for ModelInput
+MetadataSlot <- function(x) {
+  structure(list(value=x), class="MetadataSlot")
+}
+
+
+#' Check if object inherits from \code{InputSlot}
 #' 
-#' Instantiates a \code{ModelInput} object. No validation is done in this
-#' function. See \code{\link{ModelInput}} for the public interface.
+#' @param x An object
+#' @returns Logical, whether or not the object inherits from \code{InputSlot}.
 #' 
-#' @param slots Named list, each element representing an input value for a different
-#'  input slot, with the names corresponding to the slot names.
-#' @param metadata Named list (or empty list) of metadata to store alongside
-#'   the slots.
-#' 
-#' @seealso \code{\link{ModelInput}}
 #' @author Andrew Roberts
-.new_model_input <- function(slots, metadata) {
+#' @export
+is_input_slot <- function(x) {
+  inherits(x, "InputSlot")
+}
+
+
+as_input_slot <- function(x) {
+  if(is_input_slot(x)) x
+  else InputSlot(x)
+}
+
+
+as_metadata_slot <- function(x) {
+  if(is_metadata_slot(x)) x
+  else MetadataSlot(x)
+}
+
+
+#' Check if object inherits from \code{MetadataSlot}
+#' 
+#' @param x An object
+#' @returns Logical, whether or not the object inherits from \code{MetadataSlot}.
+#' 
+#' @author Andrew Roberts
+#' @export
+is_metadata_slot <- function(x) {
+  inherits(x, "MetadataSlot")
+}
+
+
+print.InputSlot <- function(x, ...) {
+  cat("InputSlot:\n")
+  print(x$value, ...)
+  invisible(x)
+}
+
+print.MetadataSlot <- function(x, ...) {
+  cat("MetadataSlot:\n")
+  print(x$value, ...)
+  invisible(x)
+}
+
+
+is_model_input_leaf <- function(x) {
+  is_input_slot(x) ||
+    is_metadata_slot(x) ||
+    !is.list(x)
+}
+
+
+# Empty list is not treated as a leaf by default.
+ModelInput <- function(x, untagged_is_slot=TRUE) {
+  assertthat::assert_that(is.list(x), msg="ModelInput constructor expects a list.")
+  validated_x <- validate_and_wrap(x, path=character(), untagged_is_slot)
   
-  structure(list(slots=slots, metadata=metadata),
-            class = "ModelInput")
+  structure(validated_x, class="ModelInput")
 }
 
 
@@ -69,7 +80,6 @@ ModelInput <- function(..., metadata=list()) {
 #' @param x An object
 #' @returns Logical, whether or not the object inherits from \code{ModelInput}.
 #' 
-#' @seealso \code{\link{ModelInput}}
 #' @author Andrew Roberts
 #' @export
 is_model_input <- function(x) {
@@ -80,334 +90,305 @@ is_model_input <- function(x) {
 #' Throw error if object is not \code{ModelInput}
 #' 
 #' @param x An object
-#' @returns Invisibly returns \code{TRUE} if \code{x} is a \code{ModelInput}.
+#' @returns Invisibly returns \code{TRUE} if \code{x} is an \code{ModelInput}.
 #'  Otherwise throws an error.
 #' 
 #' @seealso \code{\link{ModelInput}}
 #' @author Andrew Roberts
 #' @export
 check_model_input_type <- function(x) {
-  if(!is_model_input(x)) stop("`x` is not a ModelInput object.")
+  if (!is_model_input(x)) stop("`x` is not an ModelInput object.")
   
   invisible(TRUE)
 }
 
 
-#' Validate ModelInput
-#'
-#' Validates the general structure of a \code{ModelInput} object. Does not 
-#' perform validation for the actual values stored in the object, which is
-#' the job of model-specific validation.
-#'
-#' @details
-#' Must have elements \code{slots} and \code{metadata}. Both of these must
-#' be named lists, or empty lists. 
-#'
-#' @param x A \code{ModelInput} object.
-#' @return Invisibly returns \code{TRUE} if validation tests are passed, 
-#'  or throws an error if invalid.
-#' @export
-validate_model_input <- function(x) {
+# recursive validator/wrapper
+validate_and_wrap <- function(x, path, untagged_is_slot) {
+
+  # A leaf 
+  if(is_model_input_leaf(x)) {
+    if(is_input_slot(x) || is_metadata_slot(x)) {
+      return(x)
+    } else if(!is.list(x)) {
+      if(untagged_is_slot) return(InputSlot(x))
+      else return(MetadataSlot(x))
+    }
+  }
+  
+  # Branch node (list)
+  assertthat::assert_that(is_named_list(x, check_unique_names=TRUE),
+                          msg = sprintf("All list elements must have unique names at level '%s'.",
+                                       .node_path_to_key(path)))
+
+
+  # Recurse on sub-tree
+  out <- list()
+  for(nm in names(x)) {
+    out[[nm]] <- validate_and_wrap(x[[nm]], c(path, nm), untagged_is_slot)
+  }
+  
+  return(out)
+}
+
+
+# Traverses left-to-right, depth first.
+# f must have signature f(node, path, ...)
+traverse_leaves <- function(x, f) {
+  check_model_input_type(x)
+  out <- list()
+  
+  recurse <- function(node, path=character()) {
+    if(is_model_input_leaf(node)) {
+      key <- .node_path_to_key(path)
+      out[[key]] <<- f(node, path)
+    } else if(is.list(node)) {
+      for(nm in names(node)) {
+        recurse(node[[nm]], c(path, nm))
+      }
+    } else {
+      .raise_input_node_type_error(path=path)
+    }
+  }
+  
+  recurse(x, path=character())
+  out
+}
+
+
+flatten_model_input <- function(x) {
+  
+  check_model_input_type(x)
+  traverse_leaves(x, function(x, ...) x)
+  
+}
+
+
+unflatten_model_input <- function(slots, metadata=NULL) {
+  
+  stopifnot(is_named_list(slots))
+  stopifnot(is.null(metadata) || is_named_list(metadata))
+
+  tree <- list()
+  
+  # Insert slots
+  for(nm in names(slots)) {
+    path <- .node_key_to_path(nm)
+    val <- as_input_slot(slots[[nm]])
+    tree <- .assign_path(tree, path, val)
+  }
+  
+  # Insert metadata
+  if(!is.null(metadata)) {
+    for(nm in names(metadata)) {
+      path <- .node_key_to_path(nm)
+      val <- as_metadata_slot(metadata[[nm]])
+      tree <- .assign_path(tree, path, val)
+    }
+  }
+  
+  # ensure deterministic ordering: reorder list according to slot order
+  slot_order <- names(slots)
+  meta_order <- if(!is.null(metadata)) names(metadata) else character()
+  reorder_paths <- c(slot_order, meta_order)
+  
+  ModelInput(tree)
+}
+
+
+flatten_input_slots <- function(x, return_raw_values=TRUE) {
   
   check_model_input_type(x)
   
-  if(!("slots" %in% names(x))) {
-    stop("`ModelInput$slots` is missing.")
+  return_input_slot <- function(x, ...) {
+    if(is_input_slot(x)) {
+       if(return_raw_values) x$value else x
+    } else {
+      NULL
+    }
   }
   
-  if(!("metadata" %in% names(x))) {
-    stop("`ModelInput$slots` is missing.")
-  }
+  traverse_leaves(x, return_input_slot)
+}
 
-  if(!is_named_or_empty_list(x$slots, check_unique_names=TRUE)) {
-    stop("`ModelInput$slots` must be a named list with unique names, or empty list.")
-  }
+
+flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
   
-  if(!is_named_or_empty_list(x$metadata, check_unique_names=TRUE)) {
-    stop("`ModelInput$metadata` must be a named list with unique names, or empty list.")
-  }
-  
-  invisible(TRUE)
-}
-
-
-#' Slot Names Generic
-#'
-#' Returns the names of slots (input fields) present in a model input object.
-#' Defined for both \code{ModelInput} and \code{EnsembleInput}.
-#'
-#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
-#' @param ... Further arguments passed to methods.
-#'
-#' @return Typically a character vector of slot names. See specific methods 
-#'  for details.
-#' @seealso \code{\link{slot_names.ModelInput}}, \code{\link{slot_names.EnsembleInput}}
-#' @export
-slot_names <- function(x, ...) {
-  UseMethod("slot_names")
-}
-
-
-#' @export
-slot_names.default <- function(x, ...) {
-  raise_default_method_error(x, "slot_names")
-}
-
-
-#' Return slot names of a ModelInput
-#'
-#' Returns the names of slots (input fields) present in a model input object.
-#'
-#' @param x A \code{ModelInput}.
-#' @param ... Not used.
-#'
-#' @return character vector of slot names.
-#' @seealso \code{\link{slot_names.EnsembleInput}}
-#' @export
-slot_names.ModelInput <- function(x, ...) {
-  names(x$slots)
-}
-
-
-#' Number of Slots Generic
-#'
-#' Returns the number of slots (input fields) present in a model input object.
-#' Defined for both single \code{ModelInput} and \code{EnsembleInput}.
-#'
-#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
-#' @param ... Further arguments passed to methods.
-#'
-#' @return Integer, number of slots.
-#' @seealso \code{\link{n_slots.ModelInput}}, \code{\link{n_slots.EnsembleInput}}
-#' 
-#' @author Andrew Roberts
-#' @export
-n_slots <- function(x, ...) {
-  UseMethod("n_slots")
-}
-
-
-#' @export
-n_slots.default <- function(x, ...) {
-  raise_default_method_error(x, "n_slots")
-}
-
-
-#' Return Number of Slots in a ModelInput
-#'
-#' Returns the number of slots (input fields) present in a \code{ModelInput} object.
-#' This is the length of the \code{slots} field (a list) stored in the object.
-#'
-#' @param x A \code{ModelInput} object.
-#' @param ... Not used.
-#'
-#' @return Integer, number of slots. Throws error if \code{x} is not a
-#'  \code{ModelInput}.
-#' @seealso \code{\link{ModelInput}}, \code{\link{n_slots.EnsembleInput}}
-#'
-#' @author Andrew Roberts
-#' @export
-n_slots.ModelInput <- function(x, ...) {
-  length(x$slots)
-}
-
-
-#' Extract slots from a ModelInput
-#' 
-#' Returns the \code{slots} field (a named list) of a \code{ModelInput} object.
-#'
-#' @param x A \code{ModelInput} object.
-#' @return The \code{slots} list. Throws error if \code{x} is not a
-#'  \code{ModelInput}.
-#'
-#' @author Andrew Roberts
-#' @export
-slots <- function(x) {
   check_model_input_type(x)
-  x$slots
+  
+  return_metadata_slot <- function(x, ...) {
+    if(is_metadata_slot(x)) {
+      if(return_raw_values) x$value else x
+    } else {
+      NULL
+    }
+  }
+  
+  out <- traverse_leaves(x, return_metadata_slot)
+  Filter(Negate(is.null), out)
 }
 
+.node_path_to_key <- function(node_path) {
+  paste(node_path, collapse="/")
+}
 
-#' Extract metadata from a ModelInput
-#' 
-#' Returns the \code{metadata} field (a named list) of a \code{ModelInput} object.
-#'
-#' @param x A \code{ModelInput} object.
-#' @return The \code{metadata} list. Throws error if \code{x} is not a
-#'  \code{ModelInput}.
-#'
-#' @author Andrew Roberts
-#' @export
-metadata <- function(x) {
+# key should not begin with "/"
+.node_key_to_path <- function(node_key) {
+  strsplit(node_key, split="/", fixed=TRUE)[[1]]
+}
+
+leaf_names <- function(x) {
   check_model_input_type(x)
-  x$metadata
+  names(flatten_model_input(x))
 }
 
 
-#' Metadata Names Generic
-#'
-#' @param x A \code{ModelInput} object.
-#' @return Used to extract the names of metadata elements associated with model
-#'  input(s). See class-specific methods for specifics. If there is no metadata,
-#'  should return \code{character(0)}.
-#'  
-#' @sealso \code{\link{metadata_names.ModelInput}}
-#' 
-#' @author Andrew Roberts
-#' @export
-metadata_names <- function(x, ...) {
-  UseMethod("metadata_names")
+slot_names <- function(x) {
+  check_model_input_type(x)
+  names(flatten_input_slots(x))
 }
 
 
-#' @export
-metadata_names.default <- function(x, ...) {
-  raise_default_method_error(x, "metadata_names")
+metadata_names <- function(x) {
+  check_model_input_type(x)
+  names(flatten_metadata_slots(x))
+}
+
+n_leaves <- function(x) {
+  length(flatten_model_input(x))  
 }
 
 
-#' Extract metadata names from a ModelInput
-#' 
-#' Returns the character vector of metadata names for a \code{ModelInput}
-#' object. These are the names of the \code{metadata} field.
-#'
-#' @param x A \code{ModelInput} object.
-#' @return The names of the \code{metadata} list. Will be \code{character(0)} 
-#'  if there is no metadata.
-#'  
-#' @author Andrew Roberts
-#' @export
-metadata_names.ModelInput <- function(x, ...) {
-  nm <- names(x$metadata)
+n_slots <- function(x) {
+  length(flatten_input_slots(x))
+}
+
+
+n_metadata <- function(x) {
+  length(flatten_metadata_slots(x))
+}
+
+
+tree_depth <- function(x) {
+  check_model_input_type(x)
   
-  if(is.null(nm)) character(0)
-  else nm
-}
-
-
-#' Add Slot Generic
-#'
-#' Adds a new slot with name specified by \code{name}. The value for this slot
-#' is set to \code{value}, which defaults to \code{NULL}.
-#' Defined for both single \code{ModelInput} and \code{EnsembleInput}.
-#'
-#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
-#' @param name character(1), the name of the slot. Cannot conflict with existing
-#'  slot names.
-#' @param value An R object, the value to assign to the new slot. Defaults to 
-#'  \code{NULL}.
-#' @param ... Further arguments passed to methods.
-#'
-#' @returns \code{x}, with the new slot added.
-#' @seealso \code{\link{add_slot.ModelInput}}
-#' 
-#' @author Andrew Roberts
-#' @export
-add_slot <- function(x, name, value=NULL, ...) {
-  UseMethod("add_slot")
-}
-
-
-#' @export
-add_slot.default <- function(x, name, value=NULL, ...) {
-  raise_default_method_error(x, "add_slot")
-}
-
-
-#' Add New Slot to a ModelInput
-#'
-#' Adds a new slot to a \code{ModelInput} object with name specified by 
-#' \code{name}. The value for this slot is set to \code{value}, which defaults 
-#' to \code{NULL}. Defined for both single \code{ModelInput} and \code{EnsembleInput}.
-#'
-#' @param x A \code{ModelInput} object.
-#' @param name character(1), the name of the slot. Cannot conflict with existing
-#'  slot names.
-#' @param value An R object, the value to assign to the new slot. Defaults to 
-#'  \code{NULL}.
-#' @param ... Further arguments passed to methods.
-#'
-#' @returns \code{x}, with the new slot added.
-#' 
-#' @author Andrew Roberts
-#' @export
-add_slot.ModelInput <- function(x, name, value=NULL, ...) {
-  
-  if(name %in% slot_names(x)) {
-    stop("Slot `", name, "` already exists.")
+  recurse <- function(node, depth=1L) {
+    if(is_model_input_leaf(node)) return(depth)
+    if(length(node) == 0L) return(depth) # Empty list
+    max(vapply(node, recurse, integer(1), depth=depth+1L))
   }
   
-  x$slots[[name]] <- value
-  validate_model_input(x)
+  recurse(x)
+}
+
+
+print.ModelInput <- function(x) {
   
-  return(x)
-}
-
-
-#' Get Slot Generic
-#'
-#' Extracts the value(s) of a particular input slot from a \code{ModelInput}
-#' or \code{EnsembleInput}.
-#'
-#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
-#' @param name character(1), the name of the slot.
-#' @param ... Further arguments passed to methods.
-#'
-#' @returns The value(s) of the slot. See specific methods for details.
-#' @seealso \code{\link{get_slot.ModelInput}}
-#' 
-#' @author Andrew Roberts
-#' @export
-get_slot <- function(x, name, ...) {
-  UseMethod("get_slot")
-}
-
-
-#' @export
-get_slot.default <- function(x, name, ...) {
-  raise_default_method_error(x, "get_slot")
-}
-
-
-#' Get Value from Input Slot in a ModelInput
-#'
-#' Return a value from a named slot.
-#' 
-#' @param x A \code{ModelInput} object.
-#' @param name character(1), the slot name.
-#' @param err_if_missing logical(1), if \code{TRUE} (default) throws error if 
-#'  \code{name} is not a valid slot name. Otherwise will return \code{NULL} in
-#'  the case that the slot does not exist.
-#'
-#' @returns The value in the slot with name \code{name}.
-#' 
-#' @author Andrew Roberts
-#' @export
-get_slot.ModelInput <- function(x, name, err_if_missing=TRUE) {
+  input_summary <- sprintf("ModelInput(n_slots = %s, n_metadata = %s, depth = %s)\n",
+                           as.character(n_slots(x)), as.character(n_metadata(x)), 
+                           as.character(tree_depth(x)))
   
-  if(err_if_missing && !(name %in% slot_names(x))) {
-    stop("Slot `", namd, "` not found in ModelInput.")
+  cat(input_summary)
+}
+
+
+summary.ModelInput <- function(x, ...) {
+  
+  check_model_input_type(x)
+
+  slot_nm <- slot_names(x)
+  meta_nm <- metadata_names(x)
+  num_slots <- length(slot_nm)
+  num_meta <- length(meta_nm)
+  
+  cat(sprintf("ModelInput with %d slots, %d metadata, depth %d\n",
+              num_slots, num_meta, tree_depth(x)))
+  
+  if(num_slots > 0L) {
+    cat("Slots:    ", paste(slot_nm, collapse = ", "), "\n")
   }
   
-  slots(x)[[name]]
-}
-
-
-#' @export
-print.ModelInput <- function(x, ...) {
-  cat("<ModelInput>\n")
-  
-  # Print slot information.
-  if(n_slots(x) == 0L) {
-    cat("  (no slots)\n")
-  } else {
-    cat("  slots: ", paste(slot_names(x), collapse=", "), "\n")
-  }
-  
-  # Print metadata information.
-  if(length(x$metadata) > 0L) {
-    cat("  metadata: ", paste(metadata_names(x), collapse=", "), "\n")
+  if(num_meta > 0L) {
+    cat("Metadata: ", paste(meta_nm, collapse = ", "), "\n")
   }
   
   invisible(x)
 }
+
+
+print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
+  check_model_input_type(x)
+
+  recurse <- function(node, name=NULL, prefix="", is_last=TRUE) {
+    connector <- if (is_last) "└── " else "├── "
+    new_prefix <- if (is_last) paste0(prefix, "    ") else paste0(prefix, "│   ")
+    
+    # Determine label
+    if(is_model_input_leaf(node)) {
+      if(is_input_slot(node)) label <- paste0(name, " [InputSlot")
+      else if(is_metadata_slot(node)) label <- paste0(name, " [MetadataSlot")
+      
+      if(include_leaf_class) label <- paste(label, class(node$value)[1], sep=", ")
+      label <- paste0(label, "]")
+    } else {
+      label <- name
+    }
+    
+    # Print this node (skip root if NULL name)
+    if(!is.null(name)) {
+      cat(prefix, connector, label, "\n", sep="")
+    }
+    
+    # Recurse if list
+    if(is.list(node) && !is_model_input_leaf(node)) {
+      nms <- names(node)
+      for(i in seq_along(nms)) {
+        recurse(node[[i]], nms[i], new_prefix, i == length(nms))
+      }
+    }
+  }
+  
+  recurse(x, name=NULL, prefix=prefix, is_last=TRUE)
+  invisible(x)
+}
+
+
+# helper: assign value into a nested list by path
+.assign_path <- function(tree, path, value) {
+  
+  if(length(path) == 1L) { # At terminal node in recursion
+    if(!is.null(tree[[path]])) {
+      stop(sprintf("Conflict: multiple values for key '%s'", 
+                   .node_path_to_key(path)))
+    }
+    tree[[path]] <- value
+  } else {
+    nm <- path[1]
+    rest_of_path <- path[-1]
+    
+    if(is.null(tree[[nm]])) tree[[nm]] <- list()
+    if(!is.list(tree[[nm]])) { # Leaf already exists here
+      stop(sprintf("Conflict: path '%s' tries to overwrite a non-list value",
+                   .node_path_to_key(path)))
+    }
+    tree[[nm]] <- .assign_path(tree[[nm]], rest_of_path, value)
+  }
+  
+  return(tree)
+}
+
+
+.raise_input_node_type_error <- function(path="", key=NULL) {
+  if(is.null(key)) key <- .node_path_to_key(path)
+  
+  stop("Invalid node type at level: ", key,
+       ". ModelInput nodes must be InputSlots, MetadataSlots, or lists.")
+}
+
+
+
+
+
+
+
+
