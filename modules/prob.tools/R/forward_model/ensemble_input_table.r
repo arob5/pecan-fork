@@ -429,7 +429,7 @@ get_run_input.EnsembleInputTable <- function(x, run_id, ...) {
                                            metadata_names) {
   
   model_input <- input_list[[run_id]]
-  slots <- slots(model_input)
+  slots <- input_slots(model_input)
   metadata <- metadata(model_input)
   
   row_slots <- lapply(slot_names, 

@@ -163,7 +163,7 @@ to a table format.
 as_ensemble_input_table(ens_input)
 ```
 
-By default, the columns other than `run_id` are list columns, which accomodate
+By default, the columns other than `run_id` are list columns, which accommodate
 arbitrary structured objects. 
 
 The `ModelInput` objects within an `EnsembleInput` are not required to all 

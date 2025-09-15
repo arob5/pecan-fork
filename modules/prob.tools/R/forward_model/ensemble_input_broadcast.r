@@ -399,9 +399,8 @@ get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
   # Construct ModelInput object.
   slot_idxs <- x$idx_mat[run_id,] # Has names set to slot names
   slots <- instantiate_slots(slot_idxs, x$slots)
-  model_input_args <- c(slots, list(metadata=list()))
-  
-  do.call(ModelInput, model_input_args)
+
+  unflatten_model_input(slots)
 }
 
 

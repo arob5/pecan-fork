@@ -243,15 +243,84 @@ leaf_names <- function(x) {
 }
 
 
-slot_names <- function(x) {
-  check_model_input_type(x)
-  names(flatten_input_slots(x))
+#' Extract slots from a ModelInput
+#' 
+#' Returns the input slots (a named list) within a \code{ModelInput} object.
+#' This is an alias for \code{flatten_input_slots(x, return_raw_values=TRUE)}.
+#'
+#' @param x A \code{ModelInput} object.
+#' @return The input slots list. Throws error if \code{x} is not a
+#'  \code{ModelInput}.
+#'
+#' @author Andrew Roberts
+#' @export
+input_slots <- function(x) {
+  flatten_input_slots(x, return_raw_values=TRUE)
 }
 
 
-metadata_names <- function(x) {
-  check_model_input_type(x)
-  names(flatten_metadata_slots(x))
+metadata <- function(x) {
+  flatten_metadata_slots(x, return_raw_values=TRUE)
+}
+
+
+#' Slot Names Generic
+#'
+#' Returns the names of slots (input fields) present in a model input object.
+#' Defined for both \code{ModelInput} and \code{EnsembleInput}.
+#'
+#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return Typically a character vector of slot names. See specific methods 
+#'  for details.
+#' @seealso \code{\link{slot_names.ModelInput}}, \code{\link{slot_names.EnsembleInput}}
+#' @export
+slot_names <- function(x, ...) {
+  UseMethod("slot_names")
+}
+
+
+#' @export
+slot_names.default <- function(x, ...) {
+  raise_default_method_error(x, "slot_names")
+}
+
+
+slot_names.ModelInput <- function(x) {
+  nm <- names(flatten_input_slots(x))
+  
+  if(is.null(nm)) character(0)
+  else nm
+}
+
+
+#' Metadata Names Generic
+#'
+#' @param x A \code{ModelInput} object.
+#' @return Used to extract the names of metadata elements associated with model
+#'  input(s). See class-specific methods for specifics. If there is no metadata,
+#'  should return \code{character(0)}.
+#'  
+#' @sealso \code{\link{metadata_names.ModelInput}}
+#' 
+#' @author Andrew Roberts
+#' @export
+metadata_names <- function(x, ...) {
+  UseMethod("metadata_names")
+}
+
+
+#' @export
+metadata_names.default <- function(x, ...) {
+  raise_default_method_error(x, "metadata_names")
+}
+
+
+metadata_names.ModelInput <- function(x) {
+  nm <- names(flatten_metadata_slots(x))
+  if(is.null(nm)) character(0)
+  else nm
 }
 
 n_leaves <- function(x) {
@@ -259,7 +328,31 @@ n_leaves <- function(x) {
 }
 
 
-n_slots <- function(x) {
+#' Number of Slots Generic
+#'
+#' Returns the number of slots (input fields) present in a model input object.
+#' Defined for both single \code{ModelInput} and \code{EnsembleInput}.
+#'
+#' @param x A \code{ModelInput} or \code{EnsembleInput} object.
+#' @param ... Further arguments passed to methods.
+#'
+#' @return Integer, number of slots.
+#' @seealso \code{\link{n_slots.ModelInput}}, \code{\link{n_slots.EnsembleInput}}
+#' 
+#' @author Andrew Roberts
+#' @export
+n_slots <- function(x, ...) {
+  UseMethod("n_slots")
+}
+
+
+#' @export
+n_slots.default <- function(x, ...) {
+  raise_default_method_error(x, "n_slots")
+}
+
+
+n_slots.ModelInput <- function(x) {
   length(flatten_input_slots(x))
 }
 
@@ -272,13 +365,13 @@ n_metadata <- function(x) {
 tree_depth <- function(x) {
   check_model_input_type(x)
   
-  recurse <- function(node, depth=1L) {
+  recurse <- function(node, depth) {
     if(is_model_input_leaf(node)) return(depth)
     if(length(node) == 0L) return(depth) # Empty list
     max(vapply(node, recurse, integer(1), depth=depth+1L))
   }
   
-  recurse(x)
+  recurse(x, depth=0L)
 }
 
 

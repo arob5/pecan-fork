@@ -1,5 +1,10 @@
 # forward_model/ensemble_input.r
 
+
+# Constants: prefixes used to mark values as model input slots or metadata.
+SLOT_PREFIX <- "slot_"
+METADATA_PREFIX <- "metadata_"
+
 #' Base class for ensemble model input
 #'
 #' The base parent class for \code{EnsembleInput} objects. Subclasses include:

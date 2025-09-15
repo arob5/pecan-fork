@@ -137,7 +137,7 @@ rule_recycle <- function(lens) {
 
   max_len <- max(lens)
   if(any(max_len %% lens != 0)) {
-    stop("All dimensions in `lens` must evenly divide the maximal length for recycling.")
+    stop("rule_recycle(): All dimensions in `lens` must evenly divide the maximal length for recycling.")
   }
   
   # Create recycled indices for each slot
@@ -226,7 +226,7 @@ get_composite_rule <- function(groups, rules) {
 #' @export
 visualize_slot_grid <- function(idx_mat, slot_names) {
   
-  if(!is.matrix(idx_mat) || !is_integer_like(idx_mat)) {
+  if(!is.matrix(idx_mat) || !assertthat:::is.integerish(idx_mat)) {
     stop("`idx_mat` must be a matrix with integer entries.")
   }
   
