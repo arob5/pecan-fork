@@ -1,10 +1,11 @@
 ---
-title: "ensemble_input"
+title: "Representing Ensembles of Model Inputs"
 output: html_document
 ---
 
-```{r}
+```{r echo=FALSE, message=FALSE}
 library(dplyr)
+library(assertthat)
 
 base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
 code_dir <- file.path(base_dir, "R")
@@ -50,10 +51,10 @@ union of all input slots across all inputs. The input-by-input input slot and
 metadata names can also be queried as follows.
 
 ```{r}
-cat("Input slot names:\n")
+# Input slot names
 slot_names(ei, unique_only=FALSE)
 
-cat("\nMetadata names:\n")
+# Metadata names
 metadata_names(ei, unique_only=FALSE)
 ```
 
@@ -72,6 +73,7 @@ of the `EnsembleInput` object. We can view the inputs for each run on a
 slot-by-slot level by converting to a table format.
 
 ```{r}
+# Columns default to list columns
 as_ensemble_input_table(ei)
 ```
 
@@ -119,16 +121,16 @@ slot_list <- list(
 
 ei <- EnsembleInput(rule_recycle, slot_list)
 
-cat("Class of created object:\n")
+# Class of created object
 print(class(ei))
 
-cat("\nSummary of object:\n")
+# EnsembleInput summary does not change based on underlying data structure
 summary(ei)
 
-cat("\nVisualizing runs (slot indices):\n")
+# Underlying data structure (indices of slot values)
 print(ei$idx_mat)
 
-cat("\nVisualizing runs (slot tags):\n")
+# Visualizing runs (slot tags)
 get_labeled_idx_mat(ei)
 ```
 
@@ -136,14 +138,16 @@ The main object defining the runs for a `EnsembleBroadcastInput` is the
 `idx_mat` matrix shown above. The `get_labeled_idx_mat()` helper prepends
 the slot names to these indices for improved readability. The print method
 for an `EnsembleInputBroadcast` prints this latter visualization.
+
 ```{r}
 print(ei)
 ```
 The table of actual slot values (rather than values) can also be formed as before.
-Recall that the type of columns other than `run_id` defaults to lists.
+Recall that the type of columns other than `run_id` defaults to lists. We 
+simplify the list columns below.
 
 ```{r}
-as_ensemble_input_table(ei)
+as_ensemble_input_table(ei) %>% tidyr::unnest(cols = everything())
 ```
 
 As with any
@@ -205,6 +209,7 @@ slot_list <- list(
 )
 
 ei <- EnsembleInput(rule_cartesian, slot_list)
+print(ei)
 ```
 ## Matching across equal-length dimensions
 The match rule simply lines up slot values for slots that have the same length.
@@ -240,6 +245,86 @@ rule <- get_composite_rule(groups = list(c(1,2), c(3)),
 ei <- EnsembleInput(rule, slot_list)
 print(ei)
 ```
+
+
+## Work in Progress: Nested Structures
+
+It certain applications, it may make intuitive sense to organize run inputs
+into a tree-like structure. Consider the below example, where a model is 
+two be run at three spatial locations ("sites"). Each site has its own 
+meteorology data, and an ensemble of three different initial conditions. This 
+would imply 3 runs per site, or 9 in total. Now suppose we want to repeat each
+of those 9 runs with two different (site-independent) parameter settings. This
+would produce 18 runs in total. 
+
+We could easily construct an `EnsembleInputList` for this example via manual
+looping. Constructing an `EnsembleInputBroadcast` would require specifying
+the inputs in the following (slightly unnatural way). Note that we are using
+character strings as a stand-in for the actual inputs for simplicity.
+
+```{r}
+# Define slots
+slot_list <- list(
+  met = list("met_site1", "met_site2", "met_site3"),
+  ic = list("ic_site1_1", "ic_site2_1", "ic_site3_1", 
+            "ic_site1_2", "ic_site2_2", "ic_site3_2",
+            "ic_site1_3", "ic_site2_3", "ic_site3_3"),
+  par = list("p1", "p2")
+)
+
+# Broadcast
+rule <- get_composite_rule(groups = list(c(1,2), 3), # slot groups: (site, ic), (param)
+                           rules = list(rule_recycle, rule_match))
+ei <- EnsembleInput(rule, slot_list)
+
+summary(ei)
+get_labeled_idx_mat(ei)
+```
+
+A more intuitive representation of these inputs would be to organize them
+by site.
+
+```{r}
+site_settings <- list(
+  site1 = list(met = list("met_site1"),
+               ic = list("ic_site1_1", "ic_site1_2", "ic_site1_3")),
+  site2 = list(met = list("met_site2"),
+               ic = list("ic_site2_1", "ic_site2_2", "ic_site2_3")),
+  site3 = list(met = list("met_site3"),
+               ic = list("ic_site3_1", "ic_site3_2", "ic_site3_3")),
+  par = list("p1", "p2")
+)
+```
+
+At present, there is no interface that allows the application of the broadcasting
+rules to a nested list structure of this form. One could construct the 
+ensemble somewhat manually by applying broadcasting to the sub-trees and then
+concatenating the resulting runs.
+
+```{r}
+broadcast_site <- function(site_name) {
+  x <- site_settings[[site_name]]
+  x$par <- site_settings$par
+  
+  EnsembleInput(rule, x)
+}
+
+site_names <- c("site1", "site2", "site3")
+ei_list <- lapply(site_names, broadcast_site)
+args <- c(ei_list, list(output_class="EnsembleInputBroadcast"))
+ei <- do.call(concatenate_ensemble_inputs, args)
+
+summary(ei)
+as_ensemble_input_table(ei) %>% mutate(across(everything(), as.character))
+```
+
+
+
+
+
+
+
+
 
 
 

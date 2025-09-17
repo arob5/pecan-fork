@@ -237,4 +237,19 @@ get_run_input.EnsembleInputList <- function(x, run_id, ...) {
 }
 
 
+#' Concatenate two EnsembleInputList objects
+#'
+#' Currently this drops ensemble metadata, and defines new run IDs.
+#'
+#' @param x,y \code{EnsembleInputList} objects
+#' @returns Concatenated \code{EnsembleInputList}
+#' 
+#' @author Andrew Roberts
+.concat_ensemble_input_lists <- function(x, y) {
+
+  new_input_list <- c(x$inputs, y$inputs)
+  names(new_input_list) <- NULL # New run IDs will be created.
+  
+  EnsembleInput(new_input_list)
+}
 

@@ -1,9 +1,9 @@
 ---
-title: "model_input"
+title: "Representing Model Inputs"
 output: html_document
 ---
 
-```{r}
+```{r echo=FALSE, message=FALSE}
 library(dplyr)
 
 base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
@@ -21,7 +21,6 @@ source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
 ```
 
 
-# Representing a Single Model Input
 The `ModelInput` class encodes the set of inputs required to run a model.
 It is a container with *input slots* ("slots" for short) and *metadata*, 
 both of which are named lists with well-specified orders. Input slots
@@ -46,9 +45,7 @@ y <- InputSlot(list(1,2, list(3,4)))
 z <- InputSlot(array(1:12, dim=c(2,3,2)))
 
 print(x)
-cat("\n")
 print(y)
-cat("\n")
 print(z)
 ```
 
@@ -57,7 +54,7 @@ The raw value of the object can be accessed via the `value` field.
 x$value
 ```
 
-## Input Slot
+## Metadata Slot
 
 The `MetadataSlot` class is structurally exactly the same as `InputSlot` but is
 instead used to label an object as metadata.
@@ -92,16 +89,9 @@ z <- ModelInput(z_list)
 z_prime <- ModelInput(z_list, untagged_is_slot=FALSE)
 
 
-cat("x:\n")
 summary(x)
-
-cat("\ny:\n")
 summary(y)
-
-cat("\nz:\n")
 summary(z)
-
-cat("\nz_prime:\n")
 summary(z_prime)
 ```
 All nodes in a `ModelInput` are required to be named, with unique names at each
@@ -141,13 +131,10 @@ slots and metadata, respectively. By default, these function strip the
 this default can be overwritten by passing `return_raw_values=FALSE`.
 
 ```{r}
-cat("Reminder of input structure:\n")
+# Reminder of tree structure
 summary(z)
 
-cat("\nFlattened input slots:\n")
 flatten_input_slots(z)
-
-cat("\nFlattened metadata slots:\n")
 flatten_metadata_slots(z)
 ```
 
@@ -162,9 +149,10 @@ slot order in certain applications.
 
 
 ```{r}
-cat("\nOriginal model input:\n")
+# Original model input
 summary(z)
-cat("\nwith leaf order:\n")
+
+# with leaf order
 leaf_names(z)
 
 flat_input_slots <- flatten_input_slots(z)
@@ -172,8 +160,9 @@ flat_metadata_slots <- flatten_metadata_slots(z)
 
 z_new <- unflatten_model_input(flat_input_slots, flat_metadata_slots)
 
-cat("\nRe-constructed model input:\n")
+# Re-constructed model input
 summary(z_new)
-cat("\nwith leaf order:\n")
+
+# with leaf order
 leaf_names(z_new)
 ```

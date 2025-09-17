@@ -430,6 +430,137 @@ get_labeled_idx_mat <- function(x) {
 }
 
 
+# Default to Cartesian product
+ensemble_broadcast_from_tree <- function(tree, slot_names, slot_groups=NULL,
+                                         group_broadcast_rules=NULL) {
+  
+  slot_list <- slot_list_from_tree(tree, slot_names)
+  rule <- .determine_tree_broadcast_rule(slot_names, slot_groups, group_broadcast_rules)
+  
+  EnsembleInput(rule, slot_list)
+}
+
+
+#' Extract slot lists from a hierarchical tree
+#'
+#' This function traverses a hierarchical \code{list} structure and collects 
+#' values corresponding to specified slot names. If an element of the tree 
+#' matches a slot name, its value is interpreted as a list of values; if the 
+#' value is not a list, it is wrapped in a list of length one. All such values 
+#' are concatenated into the corresponding slot in the output.
+#'
+#' @param tree A hierarchical \code{list} structure, possibly nested, 
+#' containing slot elements.
+#' @param slot_names A character vector of slot names to extract.
+#'
+#' @return A named \code{list} with one element for each slot in 
+#' \code{slot_names}. Each element is itself a \code{list} of collected values.
+#'
+#' @details
+#' * If a slot is not found anywhere in \code{tree}, it is included in the 
+#'   result as an empty \code{list}, and a warning is issued.  
+#' * The elements of the sub-lists in the output may be any R object.  
+#' * Output guarantees consistent slot ordering (given by \code{slot_names}).  
+#' * Slots are identified in the tree by name. An element matching a slot name
+#'   is assumed to be a list of values within that slot. If not a list, assumed
+#'   to be a single value.
+#'
+#' @examples
+#' site_settings <- list(
+#'   site1 = list(met = "met_site1",
+#'                ic = list("ic_site1_1", "ic_site1_2", "ic_site1_3")),
+#'   site2 = list(met = "met_site2",
+#'                ic = list("ic_site2_1", "ic_site2_2", "ic_site2_3")),
+#'   site3 = list(met = "met_site3",
+#'                ic = list("ic_site3_1", "ic_site3_2", "ic_site3_3")),
+#'   par = list("p1", "p2")
+#' )
+#'
+#' .slot_list_from_tree(site_settings, c("met", "ic", "par"), depth=1) 
+#' .slot_list_from_tree(site_settings, c("met", "par"))
+#' .slot_list_from_tree(site_settings, c("met", "par", "not_a_slot"))
+#'
+#' @export
+slot_list_from_tree <- function(tree, slot_names) {
+  
+  result <- setNames(vector("list", length(slot_names)), slot_names)
+  found   <- setNames(logical(length(slot_names)), slot_names)
+  
+  recurse <- function(node) {
+    if (!is.list(node)) return(NULL)
+    for (nm in names(node)) {
+      if (nm %in% slot_names) {
+        val <- node[[nm]]
+        if (!is.list(val)) {
+          val <- list(val)
+        }
+        result[[nm]] <<- c(result[[nm]], val)
+        found[[nm]] <<- TRUE
+      } else {
+        recurse(node[[nm]])
+      }
+    }
+  }
+  
+  recurse(tree)
+  
+  # warn about missing slots
+  for (nm in slot_names) {
+    if (!found[[nm]]) {
+      warning(sprintf("Slot '%s' not found in tree. Slot will be empty.", nm))
+    }
+  }
+  
+  result
+}
+
+
+#' @export
+print.EnsembleInputBroadcast <- function(x, ...) {
+  cat("<EnsembleInputBroadcast>\n")
+  print(get_labeled_idx_mat(x))
+}
+
+
+.determine_tree_broadcast_rule <- function(slot_names, slot_groups, group_broadcast_rules) {
+  
+  if(is.null(slot_groups) && is.null(group_broadcast_rules)) {
+    rule <- rule_cartesian
+  } else if(is.null(slot_groups)) {
+    if(is.list(group_broadcast_rules)) group_broadcast_rules <- group_broadcast_rules[[1]]
+    
+    assertthat::assert_that(is.function(group_broadcast_rules),
+                            msg=paste0("If `slot_groups` is NULL, then `group_broadcast_rules` ",
+                                       "must be a single broadcast rule."))
+    rule <- group_broadcast_rules
+  } else if(!is.null(slot_groups) && !is.null(group_broadcast_rules)) {
+    assert_that(length(slot_groups) == length(group_broadcast_rules))
+    slot_idx_groups <- .slot_group_names_to_idx(slot_groups, slot_names)
+    rule <- get_composite_rule(groups=slot_idx_groups, rules=group_broadcast_rules)
+  } else {
+    stop("If `slot_groups` is specified, `group_broadcast_rules` cannot be NULL.")
+  }
+  
+  return(rule)
+}
+
+
+.slot_group_names_to_idx <- function(slot_groups, slot_names) {
+  
+  assert_that(is.character(slot_names) && !anyDuplicated(slot_names))
+  assert_that(is.list(slot_groups))
+  
+  all_names <- Reduce(c, slot_groups)
+  assert_that(is.character(all_names))
+  
+  if((anyDuplicated(all_names) > 0) || !setequal(all_names, slot_names)) {
+    stop("`slot_groups` must be a (disjoint) partition of `slot_names`.")
+  }
+  
+  lapply(slot_groups, function(x) match(x, slot_names))
+}
+
+
 #' Compute index matrix from broadcast rule
 #' 
 #' Helper function which constructs \code{idx_mat} by applying the 
@@ -448,11 +579,48 @@ get_labeled_idx_mat <- function(x) {
 }
 
 
-#' @export
-print.EnsembleInputBroadcast <- function(x, ...) {
-  cat("<EnsembleInputBroadcast>\n")
-  print(get_labeled_idx_mat(x))
+#' Concatenate two EnsembleInputBroadcast objects
+#' 
+#' @details
+#' When slots are shared across the objects, the slot values are appended
+#' (no attempt is made to match values across objects). The objects do not
+#' need to have the same set of input slots.
+#' Currently this drops ensemble metadata, and defines new run IDs.
+#'
+#' @param x,y \code{EnsembleInputList} objects
+#' @returns Concatenated \code{EnsembleInputList}
+#' 
+#' @author Andrew Roberts
+.concat_ensemble_input_broadcasts <- function(x, y) {
+  
+  # Create new slots lists (union of the slots of x and y).
+  slot_names_x <- slot_names(x)
+  slot_names_y <- slot_names(y)
+  new_slot_names <- union(slot_names_x, slot_names_y)
+  new_slots <- lapply(new_slot_names, function(nm) c(x$slots[[nm]], y$slots[[nm]]))
+  names(new_slots) <- new_slot_names
+  
+  # Create new index matrix.
+  n_runs_x <- n_runs(x)
+  n_runs_y <- n_runs(y)
+  new_n_runs <- n_runs_x + n_runs_y
+  new_run_ids <- paste0("run_", seq_len(new_n_runs))
+  
+  new_idx_mat <- matrix(nrow = new_n_runs,
+                        ncol = length(new_slot_names),
+                        dimnames = list(new_run_ids, new_slot_names))
+  
+  for(i in seq_along(new_slot_names)) {
+    nm <- new_slot_names[[i]]
+    
+    if(nm %in% slot_names_x) new_idx_mat[1:n_runs_x, nm] <- x$idx_mat[,nm]
+    if(nm %in% slot_names_y) {
+      shift <- length(x$slots[[nm]])
+      new_idx_mat[(n_runs_x+1L):new_n_runs, nm] <- y$idx_mat[,nm] + shift
+    }
+  }
+  
+  # Construct new EnsembleInputBroadcast
+  EnsembleInput(new_idx_mat, new_slots)
 }
-
-
 

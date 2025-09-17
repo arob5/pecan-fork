@@ -218,6 +218,58 @@ get_run_input.default <- function(x, run_id, ...) {
 }
 
 
+#' Append two or more EnsembleInput 
+#'
+#' Returns the \code{EnsembleInput} object defined by concatenating
+#' the runs specified by \code{...}. The total number of runs of the new object
+#' will be the sum of the runs of the objects being concatenated.
+#'
+#' @param ... \code{EnsembleInput} objects.
+#' 
+#' @details When concatenating \code{EnsembleInput}s no attempt is made to
+#' identify shared slot values across the different ensembles. This is primarily
+#' relevant for \code{EnsembleInputBroadcast}, which is the only representation
+#' that explicitly stores the unique set of values for each slot. Therefore,
+#' even if there are shared values across ensembles, they will be treated as
+#' distinct values in the concatenated \code{EnsembleInput}. This avoids
+#' the challenges of comparing structured objects, numerical imprecision, etc.
+#'
+#' @returns The concatenated \code{EnsembleInput} objects. The total number of 
+#' runs of the new object will be the sum of the runs of the objects being 
+#' concatenated. The slot names will be the union of the slot names of the
+#' individual objects.
+#' 
+#' @author Andrew Roberts
+#' @export
+concatenate_ensemble_inputs <- function(..., output_class="EnsembleInputList") {
+
+  assert_that(output_class %in% c("EnsembleInputBroadcast", 
+                                  "EnsembleInputTable", 
+                                  "EnsembleInputList"))
+  
+  l <- list(...)
+  
+  # Ensure all objects are EnsembleInputs.
+  is_valid_ens_input <- vapply(l, is_ensemble_input, logical(1))
+  if(!all(is_valid_ens_input)) {
+    stop("`concatenate_ensemble_inputs()` can only concatenate objects of type EnsembleInput.")
+  }
+  
+  # Convert all objects to the same type.
+  convert_class <- if(output_class == "EnsembleInputBroadcast") as_ensemble_input_broadcast
+                   else if(output_class == "EnsembleInputTable") as_ensemble_input_table
+                   else as_ensemble_input_list
+  l <- lapply(l, convert_class)
+  
+  # Concatenate.
+  concat_func <- if(output_class == "EnsembleInputBroadcast") .concat_ensemble_input_broadcasts
+                 else if(output_class == "EnsembleInputTable") .concat_ensemble_input_tables
+                 else .concat_ensemble_input_lists
+  
+  Reduce(concat_func, l)
+}
+
+
 #' Summarize an EnsembleInput
 #'
 #' Provide a unified summary of an \code{EnsembleInput} object, irrespective of
@@ -225,7 +277,7 @@ get_run_input.default <- function(x, run_id, ...) {
 #' us for \code{summarize()} to provide a data structure independent summary,
 #' while \code{print()} may differ based on the particular sub-class.
 #'
-#' @returns Invisbly returns \code{x}. Prints a summary to standard output.
+#' @returns Invisibly returns \code{x}. Prints a summary to standard output.
 #' @author Andrew Roberts
 #' @export
 summary.EnsembleInput <- function(x, ...) {
