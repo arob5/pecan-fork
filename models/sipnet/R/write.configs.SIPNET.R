@@ -46,9 +46,11 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id,
   template.paramSpatial <- system.file("template.param-spatial", package = "PEcAn.SIPNET")
   file.copy(template.paramSpatial, file.path(settings$rundir, run.id, "sipnet.param-spatial"))
   
-  
   param <- get_sipnet_default_params(settings)
-  param <- override_sipnet_default_params(param, settings, defaults, trait.values, IC)
+  param <- override_sipnet_default_params(param_table=param, settings=settings, 
+                                          defaults_params=defaults, 
+                                          pft_trait_list=trait.values, 
+                                          initial_conditions=IC)
   
   if (file.exists(file.path(settings$rundir, run.id, "sipnet.param"))) {
     file.rename(
@@ -210,21 +212,22 @@ get_sipnet_default_params <- function(settings) {
 #' specifying file paths in \code{setttings}. See 
 #' \code{\link{override_sipnet_default_ic}}.
 #'
-#' @param param \code{data.frame}, the table of default parameters.
+#' @param param_table \code{data.frame}, the table of default parameters.
 #' @param settings A PEcAn \code{Settings} object.
-#' @param defaults TODO: add requirements
-#' @param trait.values TODO: add requirements
-#' @param IC TODO: add requirements
+#' @param default_params TODO: add requirements
+#' @param pft_trait_list TODO: add requirements
+#' @param initial_conditions TODO: add requirements
 #' 
 #' @returns \code{data.frame} of the same structure as \code{param}, with 
 #'  default values overwritten.
-override_sipnet_default_params <- function(param, settings, defaults, trait.values, IC=NULL) {
+override_sipnet_default_params <- function(param_table, settings, default_params, 
+                                           pft_trait_list, initial_conditions=NULL) {
   
   # Flatten to single list.
-  trait_list <- simplify_sipnet_trait_values(trait.values)
+  trait_list <- simplify_sipnet_trait_values(pft_trait_list)
 
   # Set constants and drop missing values.
-  trait_list <- set_sipnet_constant_traits(settings, defaults, trait_list)
+  trait_list <- set_sipnet_constant_traits(settings, default_params, trait_list)
   trait_list <- drop_missing_sipnet_traits(trait_list)
   trait_names <- names(trait_list)
   
@@ -232,40 +235,32 @@ override_sipnet_default_params <- function(param, settings, defaults, trait.valu
   if ("leafC" %in% trait_names) {
     leafC <- trait_names[["leafC"]]
     cFracLeaf <- leafC * 0.01  # convert from percentage to fraction
-    param <- .set_sipnet_param_value(param, "cFracLeaf", cFracLeaf)
+    param_table <- .set_sipnet_param_value(param_table, "cFracLeaf", cFracLeaf)
   } else {
     leafC <- 0.48
   }
   
-  # TODO: Left off here - need to:
-  # 1.) Continue updating variable names (e.g., use trait_list variable)
-  # 2.) Use helper function .set_sipnet_param_value()
-  #
-  # This has been updated for a few parameters to illustrate the pattern. For
-  # parameters only requiring a name change (no unit conversion) we can simply
-  # use .set_sipnet_param_value() to directly set the value. No need to check
-  # if the pecan param is provided, since this helper will not change anything
-  # if the value is NULL.
-  
   # Specific leaf area converted to SLW
   # leafCSpWt [gC/m2 leaf], SLA [m2 leaf/kg C], leafC [percentage C]
   SLA <- NA
-  id <- which(param[, 1] == "leafCSpWt")
-  if ("SLA" %in% pft.names) {
-    SLA <- pft.traits[which(pft.names == "SLA")]
-    param[id, 2] <- PEcAn.utils::ud_convert(leafC / SLA, "kg/m2", "g/m2")
+  if ("SLA" %in% trait_names) {
+    SLA <- trait_list[["SLA"]]
+    param_table <- .set_sipnet_param_value(param_table, "leafCSpWt",
+                                           PEcAn.utils::ud_convert(leafC / SLA, "kg/m2", "g/m2"))
   } else {
-    SLA <- PEcAn.utils::ud_convert(leafC / param[id, 2], "kg", "g")
+    leafCSpWt <- .get_sipnet_param_value(param_table, "leafCSpWt")
+    SLA <- PEcAn.utils::ud_convert(leafC / leafCSpWt, "kg", "g")
   }
   
   # SIPNET: aMax [nmol CO2 / g   leaf / sec]
   # PEcAn:  Amax [umol CO2 / m^2 leaf / sec]
   SLA_g <- PEcAn.utils::ud_convert(SLA, "1/kg", "1/g") 
   if ("Amax" %in% pft.names) {
-    Amax_area <- pft.traits[which(pft.names == "Amax")] # [µmol/m2/s]
-    param[id, 2] <- PEcAn.utils::ud_convert(Amax_area * SLA_g, "umol/m2/s", "nmol/g/s")
+    Amax_area <- trait_list[["Amax"]] # [µmol/m2/s]
+    amax_mass <- PEcAn.utils::ud_convert(Amax_area * SLA_g, "umol/m2/s", "nmol/g/s")
+    param_table <- .set_sipnet_param_value(param_table, "aMax", amax_mass)
   } else {
-    amax_mass <- param[id, 2] # [nmol/g/s]
+    amax_mass <- .get_sipnet_param_value(param_table, "aMax") # [nmol/g/s]
     Amax <- PEcAn.utils::ud_convert(amax_mass / SLA_g, "nmol/g/s", "umol/m2/s")
   }
   
@@ -911,6 +906,26 @@ drop_missing_sipnet_traits <- function(trait_list) {
   param_table <- param_table[param_table[,1] == sipnet_param_name, 2] <- new_value
   
   return(param_table)
+}
+
+
+#' Extract One Parameter Value from SIPNET Parameter Table
+#'
+#' @param param_table data.frame, with first column containing SIPNET parameter
+#'  names and second column containing the associated parameter values.
+#' @param sipnet_param_name character(1), the SIPNET parameter name. Used to 
+#'  select a row of \code{param_table}.
+#' 
+#' @returns The value of the specified parameter. Raises an error if the parameter
+#'  name is not found in the table.
+#' 
+#' @author Andrew Roberts
+.get_sipnet_param_value <- function(param_table, sipnet_param_name) {
+  if(!(param_name %in% param_table[,1])) {
+    stop("SIPNET parameter `", param_name, "` does not exist in parameter table.")
+  }
+  
+  param_table[param_table[,1] == sipnet_param_name, 2]
 }
 
 
