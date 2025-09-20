@@ -5,6 +5,22 @@
 
 #' Check that R object has full set of names
 #' 
+#' Check if an R object has a unique set of names. Every element of the object
+#' must have a non-NA, non-empty string name. 
+#' 
+#' @param x An R object
+#' 
+#' @returns logical, \code{TRUE} if object has full set of unique names.
+#' 
+#' @author Andrew Roberts
+#' @export
+has_unique_names <- function(x) {
+  assertthat:::is.named(x) && !anyDuplicated(names(x))
+}
+
+
+#' Check that R object has full set of names (NOTE: slated for deletion)
+#' 
 #' Check if an R object has names, and that every element of the object
 #' has a name (empty string does not count as a name). Optionally check 
 #' that the names are unique. An object without a names attribute is considered 

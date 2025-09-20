@@ -1,5 +1,116 @@
 # forward_model/forward_model_generators.r
 
+# TODOs:
+# - Force slots to align across runs.
+# - Write ModelInput.flatten_to_numeric() and ModelInput.unflatten_from_numeric() methods
+# - Write EnsembleInput.flatten_to_numeric() EnsembleInput.unflatten_from_numeric() methods
+# - Figure out how to handle run IDs
+
+# Forward model will accept matrix (one row per flattened input). The inputs
+# will then be vectorized. e.g., if we have slots:
+# l <- list(a=list(1,2,3), b=list(1:3, 4:6) and both slots are specified, then
+# each individual input will have length 4 (e.g, input one here is c(1,1:3)).
+# If a one row matrix is provided (one input) each individual model input will
+# be updated using the passed value.
+#
+# What if more than one row is provided? We will interpret this as vectorizing
+# over the inputs. i.e., not messing the original ens_input template - that is
+# fixed. The template will be repeated once per row.
+#
+# The tricky part here: how do we specify how the passed input will be broadcast?
+# Start simple: require the broadcast representation and require the entire
+# slot to be selected as "free". e.g., for l <- list(a=list(1,2,3), b=list(1:3, 4:6),
+# if `slot_names = "b"` then the forward model will expect users to pass values
+# like list(1:3, 4:6) [though they will be passed in the form matrix(c(1:3, 4:6))].
+# The passed value will be inserted into this slot, which can then be broadcast.
+# It is up to the user to define slots such that each slot is either fixed
+# or free. Focus on ensemble input now, but should have dispatch single 
+# forward model if "default" is a ModelInput (this will be more straightforward).
+
+# Eventually, "Slot" should be turned into a class, which could provide validation
+# that all values of that slot are of the same type.
+
+# verbose printing should:
+# - Print fixed and free slots
+# - Dimension by slot of each free slot
+# - Print dimension of expected input
+# - Number of total runs in ensemble
+# - Forward model method that will be used (.function, .Settings, etc.)
+# - Information on how the input will be broadcast
+
+# Start simple by not vectorizing; just pass one value, which then gets 
+# broadcast out according to the template.
+gen_array_fwd_model <- function(obj, default, slot_names, verbose=TRUE) {
+
+  # Freeze arguments.
+  force(obj); force(default); force(slot_names)
+  .validate_array_fwd_model(default, slot_names)
+
+  # Flattened list containing all slots.
+  free_slots <- do.call(c, default$slots[slot_names]) 
+  free_slot_dims <- lapply(free_slots, get_array_like_dim)
+  
+  if(verbose) print_fwd_model_description(obj, default, slot_names)
+
+  function(input_mat, ...) {
+    ens_input <- update_ens_input_free_slots(default, input_mat, free_slot_dims,
+                                             slot_name_map)
+    run_model_ensemble(obj, ens_input, ...)
+  }
+}
+
+
+update_ens_input_free_slots <- function(ens_input, input_mat, free_slot_names, 
+                                        free_slot_dims) {
+  
+  # Flat list containing values from all slots.
+  vals <- .flat_to_batched_array_list(input_mat, free_slot_dims)
+  
+  # Allocate values to each slot.
+  idx_start <- 1L
+  for(i in seq_along(free_slot_names)) {
+    nm <- free_slot_names[[i]]
+    idx_end <- idx_start + length(ens_input$slots[[nm]]) - 1L
+    ens_input$slots[[nm]] <- vals[idx_start:idx_end]
+    idx_start <- idx_end + 1L
+  }
+  
+  return(ens_input)
+}
+
+
+.validate_array_fwd_model <- function(default, slot_names) {
+  check_ensemble_input_broadcast_type(default)
+  
+  if(anyDuplicated(slot_names) > 0L) {
+    stop("`slot_names` contains duplicates.")
+  }
+  
+  invalid_slot_names <- setdiff(slot_names, slot_names(default))
+  if(length(invalid_slot_names) > 0L) {
+    stop("Invalid slot names: ", paste(invalid_slot_names, ", "))
+  }
+  
+  free_slots <- default$slots[slot_names]
+  for(l in free_slots) .check_input_is_array_list(l)
+
+  invisible(TRUE)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #' @export
 is_forward_model_run <- function(x) {
