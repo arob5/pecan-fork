@@ -1,16 +1,28 @@
-# batched_array.r
+# batch_array.r
 #
 # Depends: assertthat
 
 # Contains functions for manipulating and converting between three array-based
 # data structures:
-# 1.) Batched array: An array in which the first dimension is interpreted as
-#     a batch dimension. In other words, a batched array is an ordered set of
+# 1.) batch array: An array in which the first dimension is interpreted as
+#     a batch dimension. In other words, a batch array is an ordered set of
 #     arrays of equal dimension.
 # 2.) Array list: A list of arrays, not necessarily of the same dimension.
 # 3.) Flattened array: a flattened matrix representation of one or more arrays.
 #     The number of rows corresponds to the number of arrays (batch size). Each
 #     row is a flattened vector representation of an array or an array list.
+
+
+#' Check if an object is a batch array
+#'
+#' A batch array is defined to be an array with at least two dimensions.
+#' 
+#' @returns logical, \code{TRUE} if \code{x} is an array with two or more dimensions.
+#'
+#' @author Andrew Roberts
+is_batch_array <- function(x) {
+  is.array(x) && length(dim(x)) > 1L
+}
 
 
 #' Check if object is array or vector
@@ -26,31 +38,7 @@ is_array_like <- function(x) {
 }
 
 
-get_array_like_dim <- function(x) {
-  assert_that(is_array_like(x))
-  
-  if(is.array(x)) dim(x)
-  else c(1,length(x))
-}
-
-
-is_array_list_equal_dim <- function(x) {
-  
-  if(!is.list(x)) return(FALSE)
-  
-  arr_dims <- lapply(x, get_array_like_dim)
-  
-  if(length(arr_dims) == 1L) {
-    all_dims_equal <- TRUE
-  } else {
-    all_dims_equal <- Reduce(function(dim1, dim2) all(dim1==dim2), arr_dims)
-  }
-  
-  return(all_dims_equal)
-}
-
-
-#' Convert batched array to flattened (matrix) representation
+#' Convert batch array to flattened (matrix) representation
 #' 
 #' Converts an array (or vector), to a standardized flat representation.
 #' 
@@ -68,7 +56,7 @@ is_array_list_equal_dim <- function(x) {
 #' 
 #' @param x An array. The first dimension is interpreted as the batch dimension.
 #'  An array with a single dimension is treated as an array with batch size one.
-#'  A vector of length \code{len} is treated as a \code{(1,1,len)} batched
+#'  A vector of length \code{len} is treated as a \code{(1,1,len)} batch
 #'  array.
 #' 
 #' @returns Matrix with number of rows equal to the number of arrays in the
@@ -76,11 +64,10 @@ is_array_list_equal_dim <- function(x) {
 #'  individual array. See details for specifics.
 #' 
 #' @author Andrew Roberts
-.batched_array_to_flat = function(x) {
+.batch_array_to_flat = function(x) {
   
-  .check_input_is_batched_array(x)
-  x <- .wrap_singleton_as_batched_array(x)
-  
+  x <- .wrap_and_check_batch_array(x)
+
   dim_x <- dim(x)
   n <- dim_x[1] # Batch size
   n_dims_total <- length(dim_x) # Including batch dimension
@@ -94,7 +81,7 @@ is_array_list_equal_dim <- function(x) {
 }
 
 
-#' Invert the flattening operation for a batched array 
+#' Invert the flattening operation for a batch array 
 #' 
 #' Converts a flattened representation of an array (a vector), or multiple 
 #' such vectors, to a (potentially multidimensional) array.
@@ -115,11 +102,13 @@ is_array_list_equal_dim <- function(x) {
 #'  the input contains \code{n} flattened values.
 #'
 #' @author Andrew Roberts
-.flat_to_batched_array = function(x, target_shape) {
+.flat_to_batch_array = function(x, target_shape) {
   
-  .check_input_is_flat(x, target_shape)
-  x <- .wrap_singleton_as_flat(x)
+  x <- .wrap_and_check_flat_array(x, target_shape)
   
+  # x <- .wrap_vector_as_flat(x)
+  # .check_input_is_flat(x, target_shape)
+
   n <- nrow(x)
   n_dims <- length(target_shape)
   
@@ -141,45 +130,46 @@ is_array_list_equal_dim <- function(x) {
 #' representation by flattening each array and then appending them.
 #' 
 #' @details
-#' If \code{arrays_are_batched = FALSE} then each array in the list is viewed
-#' as a single array (not a batched array), and the output is a matrix of
+#' If \code{arrays_are_batch = FALSE} then each array in the list is viewed
+#' as a single array (not a batch array), and the output is a matrix of
 #' shape \code{(1, len)}, where \code{len} is the sum of the number of entries
-#' across all of the arrays. If \code{arrays_are_batched = TRUE}, then each
+#' across all of the arrays. If \code{arrays_are_batch = TRUE}, then each
 #' array is viewed as a batch array and all arrays are required to have equal
 #' batch size (i.e., same number of elements in the first dimension). The 
 #' remaining dimensions need not be equal. In this case, the returned matrix
 #' is of shape \code{(n, len)} where \code{n} is the batch size and 
 #' \code{len} is the sum of the number of elements in all of the sub-arrays
-#' excluding the first dimension (e.g., a \code{(n,2,3)} batched array has length
+#' excluding the first dimension (e.g., a \code{(n,2,3)} batch array has length
 #' 6).
 #' 
-#' @param x list of arrays or batched arrays.
-#' @param arrays_are_batched logical(1) whether to view elements of the list as
-#'  arrays or batched arrays.
+#' @param x list of arrays or batch arrays.
+#' @param arrays_are_batch logical(1) whether to view elements of the list as
+#'  arrays or batch arrays.
 #'  
 #' @returns matrix, with number of rows corresponding to the batch size and
 #'  number of columns corresponding to the length of the flattened array
 #'  representation.
 #'
 #' @author Andrew Roberts
-.array_list_to_flat <- function(x, arrays_are_batched=FALSE) {
+.array_list_to_flat <- function(x, arrays_are_batch=FALSE) {
   
-  # Convert to batched arrays with batch size 1.
-  if(!arrays_are_batched) {
-    .check_input_is_array_list(x)
-    x <- lapply(x, .wrap_singleton_as_batched_array)
+  assert_that(is.list(x), msg=".array_list_to_flat() expects list.")
+  
+  # Convert to batch arrays with batch size 1.
+  if(arrays_are_batch) {
+    .wrap_and_check_batch_array_list(x) # TODO: write this function
   } else {
-    .check_input_is_batched_array_list(x)
+    x <- lapply(x, .add_batch_axis_to_array)
   }
-  
-  x_flat_list <- lapply(x, .batched_array_to_flat)
+
+  x_flat_list <- lapply(x, .batch_array_to_flat)
   do.call(cbind, x_flat_list)
 }
 
 
 #' Inverts .array_list_to_flat
 #'
-#' Converts flattened matrix representation to a list of batched arrays.
+#' Converts flattened matrix representation to a list of batch arrays.
 #' 
 #' @details
 #' The argument \code{target_shapes} provides the blueprint for how to expand
@@ -193,24 +183,23 @@ is_array_list_equal_dim <- function(x) {
 #' dimension is assumed to be one. 
 #'
 #' @returns List of length \code{length(target_shapes)}, with each element 
-#'  containing a batched array (see details). Throws error if 
+#'  containing a batch array (see details). Throws error if 
 #'  \code{target_shapes} is inconsistent with the dimensions of \code{x}.
 #'
 #' @author Andrew Roberts
-.flat_to_batched_array_list <- function(x, target_shapes) {
+.flat_to_batch_array_list <- function(x, target_shapes) {
   
-  .check_input_is_flat(x, target_shapes)
-  x <- .wrap_singleton_as_flat(x)
+  x <- .wrap_and_check_flat_array(x, target_shapes)
   if(!is.list(target_shapes)) target_shapes <- list(target_shapes)
   
-  len_cutoffs <- c(1, cumsum(vapply(target_shapes, prod, numeric(1))))
-  
+  cutoff_starts <- c(1L, cumsum(vapply(target_shapes, prod, numeric(1))) + 1L)
+
   # Helper to extract correct subset of x and unflatten.
   unflatten_arr <- function(i) {
-    col_idx_start <- len_cutoffs[i]
-    col_idx_end <- len_cutoffs[i+1]
+    col_idx_start <- cutoff_starts[i] 
+    col_idx_end <- cutoff_starts[i+1] - 1L
     
-    .flat_to_batched_array(x[,col_idx_start:col_idx_end, drop=FALSE],
+    .flat_to_batch_array(x[,col_idx_start:col_idx_end, drop=FALSE],
                            target_shapes[[i]])
   }
   
@@ -218,9 +207,30 @@ is_array_list_equal_dim <- function(x) {
 }
 
 
+#' Check if an object can be converted to a batch array
+#'
+#' Validates that an object is, or can be converted to, a batch array.
+#' Vectors and single-dimension arrays can be converted to batch arrays (they
+#' are wrapped as one row matrices).
+#'
+#' @returns invisibly returns the input \code{x}, potentially modified so that
+#'  it can be considered a valid batch array. Throws error if \code{x} cannot
+#'  be converted to a batch array.
+#'
+#' @author Andrew Roberts
+.wrap_and_check_batch_array <- function(x) {
+  x <- .wrap_vector_as_batch_array(x)
+  
+  assert_that(is_batch_array(x),
+              msg="batch array representation requires array with at least two dimensions.")
+  
+  invisible(x)
+}
+
+
 #' Validate that input is flattened array (or array list) of particular shape
 #' 
-#' Checks whether \code{x} can be mapped to a list of batched arrays, with
+#' Checks whether \code{x} can be mapped to a list of batch arrays, with
 #' array shapes given by \code{target_shapes}.
 #'
 #' @param x An R object
@@ -230,90 +240,132 @@ is_array_list_equal_dim <- function(x) {
 #'  will be wrapped as a one-element list.
 #'  
 #' @returns invisibly returns \code{TRUE} if \code{x} can be viewed as a flattened
-#'  list of batched arrays of the form determined by \code{target_shapes}.
+#'  list of batch arrays of the form determined by \code{target_shapes}.
 #'  Otherwise throws an error.  
 #'
 #' @author Andrew Roberts
-.check_input_is_flat <- function(x, target_shapes) {
+.wrap_and_check_flat_array <- function(x, target_shapes) {
   
+  x <- .wrap_vector_as_flat_array(x)
   if(!is.list(target_shapes)) target_shapes <- list(target_shapes)
   
-  assert_that(is_array_like(x),
-              msg="Flattened batched array representation requires vector or matrix.")
-  x <- .wrap_singleton_as_flat(x)
-  
-  # Ensure dimensions of x are consistend with target_shapes.
-  len <- sum(vapply(shape_list, prod, numeric(1)))
+  assert_that(is.matrix(x),
+              msg="Flattened batch array representation requires matrix.")
+
+  # Ensure dimensions of x are consistent with target_shapes.
+  len <- sum(vapply(target_shapes, prod, numeric(1)))
   
   assert_that(ncol(x) == len,
               msg=paste0("Flattened array with length ", ncol(x), " is not ",
-                         "in agreement with target length ", len))
+                         "in agreement with target length ", len,
+                         ". Note that `target_shapes` should not include the ",
+                         "batch dimension."))
   
-  invisible(TRUE)
+  invisible(x)
 }
 
 
-.check_input_is_batched_array <- function(x) {
+# batch array list requires every element to be a batch array with equal
+# batch size.
+.wrap_and_check_batch_array_list <- function(x) {
   
-  assert_that(is.vector(x) || is.array(x),
-              msg="Batched array representation requires vector or array.")
+  assert_that(is.list(x))
+
+  # Ensure each element is a batch array.
+  for(i in seq_along(x)) {
+    tryCatch({
+      x[[i]] <- .wrap_and_check_batch_array(x[[i]])
+    },
+    
+    error = function(e) {
+      stop(sprintf("Element '%i' in list is not batch array: %s", 
+                    i, e$message), call.=FALSE)
+    })
+  }
   
-  invisible(TRUE)
+  # Ensure all batch arrays have the same batch size. 
+  arr_dims <- vapply(x, function(arr) dim(arr)[1], integer(1))
+  
+  if(length(unique(arr_dims)) > 1L) {
+    stop("Arrays in list have different batch sizes.")
+  }
+  
+  invisible(x)
 }
 
+ 
+#' Converts single-dimension objects to a batched array
+#'
+#' Converts vectors and single dimension arrays to a batched array by storing
+#' them as a one row matrix. All other objects are returned unmodified.
+#'
+#' @returns If \code{x} is a vector or single-dimension array, then returns
+#'  a one row matrix, with number of columns corresponding to the length of the
+#'  input. Otherwise returns \code{x} untouched.
+#'
+#' @author Andrew Roberts
+.wrap_vector_as_batch_array <- function(x) {
+  if(is.vector(x) && is.atomic(x)) {
+    matrix(x, nrow=1L)
+  } else if(is.array(x) && length(dim(x)) == 1L) {
+    matrix(drop(x), nrow=1L)
+  } else {
+    x
+  }
+}
+
+
+#' Converts single-dimension objects to a one-row flattened array
+#'
+#' Converts vectors and single dimension arrays to a flattened batched array 
+#' by storing them as a one row matrix. All other objects are returned unmodified.
+#'
+#' @returns If \code{x} is a vector or single-dimension array, then returns
+#'  a one row matrix, with number of columns corresponding to the length of the
+#'  input. Otherwise returns \code{x} untouched.
+#' @note The logic of this function happens to exactly follow that of
+#'  \code{.wrap_vector_as_batch_array()}. These are kept as separate functions
+#'  as they conceptually different, and may potentially deviate in the future.
+#'
+#' @author Andrew Roberts
+.wrap_vector_as_flat_array <- function(x) {
+  if(is.vector(x) && is.atomic(x)) {
+    matrix(x, nrow=1L)
+  } else if(is.array(x) && length(dim(x)) == 1L) {
+    matrix(drop(x), nrow=1L)
+  } else {
+    x
+  }
+}
+
+
+#' Adds a length one batch axis to a singleton array
+#'
+#' Given an existing array \code{x}, returns a new array with dimension
+#' \code{c(1, dim(x))}, representing a batch array with batch size one.
+#' Vectors and single-dimension arrays are also wrapped as batch one arrays,
+#' as per \code{.wrap_and_check_batch_array()}.
+#'
+#' @returns A batch array with batch size one (i.e., the first dimension has
+#'  length one). Throws error if \code{x} cannot be converted to a batch array.
+#'
+#' @author Andrew Roberts
+.add_batch_axis_to_array <- function(x) {
+  if(is.array(x)) x <- array(x, dim=c(1L, dim(x)))
+  .wrap_and_check_batch_array(x)
+}
+
+
+
+#
+# OLD
+#
 
 # Requires x to be a list of arrays, not necessarily of the same dimension.
 .check_input_is_array_list <- function(x) {
   assert_that(is.list(x))
   assert_that(all(vapply(x, is_array_like, logical(1))),
               msg="An array list requires each element to be an array or vector.")
-}
-
-
-# Batched array list requires every element to be a batched array with equal
-# batch size.
-.check_input_is_batched_array_list <- function(x) {
-  
-  assert_that(is.list(x))
-
-  # Ensure each element is a batched array.
-  for(i in seq_along(x)) {
-    tryCatch(
-      .check_input_is_batched_array(x[[i]]),
-      error = function(e) {
-        nm <- names(x)[i]
-        stop(sprintf("Element '%s' in list is not batched array: %s", 
-                     nm, e$message), call.=FALSE)
-      }
-    )
-  }
-  
-  # Ensure all batched arrays have the same batch size. 
-  arr_dims <- vapply(x, function(arr) .get_batched_array_dim(arr)[1], integer(1))
-  
-  if(length(unique(arr_dims)) > 1L) {
-    stop("Arrays in list have different batch sizes.")
-  }
   
   invisible(TRUE)
 }
-
-
-.wrap_singleton_as_flat <- function(x) {
-  if(is.vector(x) && is.atomic(x)) x <- matrix(x, nrow=1L)
-  else x
-}
-
-
-# Already assumes that x is vector or array
-.wrap_singleton_as_batched_array <- function(x) {
-  if(is.vector || length(dim(x)) == 1L) matrix(drop(x), nrow=1L)
-  else x
-}
-
-
-.get_batched_array_dim <- function(x) {
-  x <- .wrap_singleton_as_batched_array(x)
-  dim(x)
-}
-
