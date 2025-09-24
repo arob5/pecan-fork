@@ -1,0 +1,126 @@
+---
+title: "Generating Forward Models"
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE}
+library(dplyr)
+library(assertthat)
+
+base_dir <- "/projectnb/dietzelab/arober/pecan/modules/prob.tools"
+code_dir <- file.path(base_dir, "R")
+fwd_dir <- file.path(code_dir, "forward_model")
+
+source(file.path(code_dir, "utils.r"))
+source(file.path(code_dir, "types.r"))
+source(file.path(code_dir, "batched_array.r"))
+source(file.path(fwd_dir, "broadcast_rules.r"))
+source(file.path(fwd_dir, "model_input.r"))
+source(file.path(fwd_dir, "ensemble_input.r"))
+source(file.path(fwd_dir, "ensemble_input_list.r"))
+source(file.path(fwd_dir, "ensemble_input_table.r"))
+source(file.path(fwd_dir, "ensemble_input_broadcast.r"))
+source(file.path(fwd_dir, "run_model_api.r"))
+source(file.path(fwd_dir, "forward_model_generators.r"))
+```
+
+
+## Introduction
+
+In this case, each run requires a parameter vector as input, in addition
+to some other information. 
+
+```{r}
+slot_list <- list(
+  a = list(1, 2, 3, 4, 5, 6),
+  b = list("seven", "eight", "nine"),
+  c = matrix(7:14, nrow=4L) # Four different values of the parameter vector
+)
+
+rule <- get_composite_rule(groups = list(c(1,2), c(3)),
+                           rules = list(rule_recycle, rule_match))
+
+ei <- EnsembleInput(rule, slot_list)
+
+# Summary of ensemble
+summary(ei)
+
+# Input indices for each run
+print(ei)
+
+# Looking at inputs for a particular run
+input_slots(get_run_input(ei, "run_20"))
+```
+Suppose we want to generate a forward model that uses this ensemble run as 
+the "run template"; that is, each execution of the forward model will run
+the underlying model 24 times. Suppose also that we want to be able to pass in
+the set of parameter vectors on the fly for each run. In other words,
+slots `a` and `b` will be fixed, while slot `c` is free. We first define a toy
+model.
+
+```{r}
+# Just print the input to visualize what is happening.
+f <- function(x) {
+  x <- input_slots(x)
+  print(paste0(x$a, " - ", x$b, " - ", .get_dims_string(x$c)))
+}
+```
+
+
+Now we can generate a "forward model", which returns a function that accepts
+only the free slots as arguments. A "matrix forward model" always requires 
+a matrix as input. The interpretation of this matrix is completely dependent
+on the `EnsembleInput` template we defined previously. The forward model
+generator by default prints a description of the forward model, which can
+be silenced by setting `verbose = FALSE`.
+
+```{r}
+fwd <- gen_matrix_fwd_model(f, ei, slot_names="c")
+```
+
+Here's what the forward model looks like when printed. It is simply an R 
+function that uses a closure, which allows the function to have a state 
+determined by the `EnsembleInput` template, free slot names, and some other
+information used for validating inputs to the forward model and using them
+to set the values of the free slots.
+
+```{r}
+print(fwd)
+```
+Let's start by making sure the forward model behaves as expected by running it
+at the existing value of `c` we set above, and comparing the result to a standard
+call to `run_model_ensemble()`.
+
+
+```{r}
+output1 <- run_model_ensemble(f, ei)
+```
+
+
+```{r}
+output2 <- fwd(slot_list$c)
+```
+
+```{r}
+# Check that the two ensemble run outputs are the same.
+all.equal(output1, output2)
+```
+
+The benefit of the forward model is that we now have a black-box function that
+can easily be run at new parameter values without having to think about the 
+`EnsembleInput`, model run API, etc.
+
+```{r}
+# Run forward model at new parameter values
+new_c <- matrix(101:108, ncol=2L)
+new_output <- fwd(new_c)
+```
+
+Trying to pass invalid inputs will result in errors.
+
+```{r}
+try(fwd(NULL)) # Non-array input
+try(fwd(1:2))  # Incorrect dimension
+```
+
+

@@ -262,8 +262,8 @@ validate_ensemble_input_broadcast <- function(x) {
     stop("EnsembleInputBroadcast$idx_mat must have column names identical to `names(slots)`.")
   }
   
-  if(!all(vapply(slots, is.list, logical(1)))) {
-    stop("EnsembleInputBroadcast$slots must be a list of lists.")
+  if(!all(vapply(slots, is_slot_value_set, logical(1)))) {
+    stop("EnsembleInputBroadcast$slots must be a list of valid slot value sets.")
   }
   
   if(ncol(idx_mat) != length(slots)) {
@@ -281,6 +281,18 @@ validate_ensemble_input_broadcast <- function(x) {
   }
   
   invisible(TRUE)
+}
+
+
+#' @details
+#' Defines what constitues a valid set of slot values. Each element 
+#' \code{slots[[i]]} of the slot list must be a valid set of slot values.
+#' Currently supports lists of values and matrices of values (one per row).
+#' Vectors are wrapped as one row matrices.
+is_slot_value_set <- function(x) {
+  
+  is.list(x) || is_array_like(x) 
+  
 }
 
 
@@ -574,8 +586,15 @@ print.EnsembleInputBroadcast <- function(x, ...) {
 #'  broadcast rule is valid.
 #' @author Andrew Roberts
 .broadcast_slots <- function(slots, broadcast_rule) {
-  lens <- vapply(slots, length, integer(1))
+  lens <- vapply(slots, n_vals_in_slot, integer(1))
   broadcast_rule(lens)
+}
+
+
+#' Get the number of values stored in a slot value set.
+n_vals_in_slot <- function(x) {
+  if(is.list(x)) length(x)
+  else nrow(.wrap_vector_as_flat_array(x))
 }
 
 

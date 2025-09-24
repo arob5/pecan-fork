@@ -264,7 +264,10 @@ visualize_slot_grid <- function(idx_mat, slot_names) {
 #' 
 #' @param idx named integer vector.
 #' @param slots named list of slots, with names defining the slot names. Each 
-#' element is a list or vector of possible values for that slot.
+#' element is either:
+#'  1. a list of possible values for that slot
+#'  2. a matrix, where each value is contained in one row (a vector is wrapped
+#'    as a one row matrix).
 #'
 #' @return A list of length equal to the length of \code{idx} (see details).
 #'
@@ -299,9 +302,11 @@ instantiate_slots <- function(idx, slots) {
 #' @param idx_mat Integer matrix, with each row an index tuple for the slots.
 #' @param slots List of length ncol(idx_mat), each element is a list or vector 
 #'    of possible values for that slot.
-#' @param include_rownames logical, if \code{TRUE} and \code{idx_mat} has 
+#' @param include_rownames logical(1), if \code{TRUE} and \code{idx_mat} has 
 #'  rownames, then these rownames are added as a column with name specified by
 #'  the argument \code{rownames_col}. If \code{FALSE}, this column is not added.
+#' @param rownames_col, character(1), the name of the column that stores rownames.
+#'  Only used if \code{include_rownames} is \code{TRUE}.
 #'
 #' @return A tibble where each row is a combination of slot values, and list-like 
 #'    slot values become list columns. The tibble has the same number of rows
@@ -320,12 +325,12 @@ instantiate_slots <- function(idx, slots) {
 #' @export
 instantiate_slot_grid <- function(idx_mat, slots, include_rownames=FALSE,
                                   rownames_col="row_names") {
-  stopifnot(is.matrix(idx_mat))
-  stopifnot(is_integer_like(idx_mat))
-  stopifnot(is.list(slots))
-  stopifnot(ncol(idx_mat) == length(slots))
-  stopifnot(is_character_scalar(rownames_col))
-  
+  assert_that(is.matrix(idx_mat))
+  assert_that(assertthat:::is.integerish(idx_mat))
+  assert_that(is.list(slots))
+  assert_that(is.character(rownames_col) && assertthat:::is.scalar(rownames_col))
+  assert_that(ncol(idx_mat) == length(slots))
+
   n_slots <- ncol(idx_mat)
   n_combs <- nrow(idx_mat)
   slot_colnames <- names(slots)
@@ -338,9 +343,12 @@ instantiate_slot_grid <- function(idx_mat, slots, include_rownames=FALSE,
     # If vals is a list, always create a list column
     if (is.list(vals)) {
       lapply(idxs, function(idx) vals[[idx]]) # allow for slots of length 0
+    } else if (is_array_like(vals)) {
+      # Different values indexed by first dimension.
+      vals <- wrap_as_multidim_array(vals)
+      lapply(idxs, function(idx) index_first_dim(vals, idx, force_array_output=FALSE))
     } else {
-      # Vector - extract using standard vector indexing
-      vals[idxs]
+      stop("Values in slot `", j, "` are stored in unsupported format.")
     }
   }
   
@@ -365,12 +373,24 @@ instantiate_slot_grid <- function(idx_mat, slots, include_rownames=FALSE,
 #' 
 #' @param slot_name character(1), a string name in \code{names(slots)}
 #' @param slot_idx integer(1), an index of the vector/list \code{slots[[slot_name]]}
-#' @param slots named list, with list or vector elements
+#' @param slots named list, where each element is either a list or matrix (one row per value).
+#'  Atomic vectors are wrapped as one row matrices.
 #' 
-#' @returns The value \code{slots[[slot_name]][[slot_idx]]}.
+#' @returns If the slot values are stored in a list, then returns
+#'   \code{slots[[slot_name]][[slot_idx]]}. If a matrix, then returns
+#'   \code{slots[[slot_name]][slot_idx,]}.
+#'   
 #' @author Andrew Roberts
 .get_slot_value <- function(slot_name, slot_idx, slots) {
-  slots[[slot_name]][[slot_idx]]
+  slot_vals <- slots[[slot_name]]
+  
+  if(is.list(slot_vals)) slot_vals[[slot_idx]]
+  else if(is_array_like(slot_vals)) {
+    slot_vals <- wrap_as_multidim_array(slot_vals)
+    index_first_dim(slot_vals, slot_idx, force_array_output=FALSE)
+  } else {
+    stop("`slots[[", slot_name, "]] must be a list or array-like.")
+  }
 }
 
 

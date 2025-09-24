@@ -13,6 +13,7 @@ fwd_dir <- file.path(code_dir, "forward_model")
 
 source(file.path(code_dir, "utils.r"))
 source(file.path(code_dir, "types.r"))
+source(file.path(code_dir, "batched_array.r"))
 source(file.path(fwd_dir, "broadcast_rules.r"))
 source(file.path(fwd_dir, "model_input.r"))
 source(file.path(fwd_dir, "ensemble_input.r"))
@@ -111,12 +112,19 @@ We walk through a sequence of increasingly complicated examples.
 To start, 
 consider an example with two slots, one of length 4 and one of length 2.
 We seek to define 4 unique runs by repeating the pattern of the shorter slot
-so that it matches the length of the longer one.
+so that it matches the length of the longer one. The sets of values for slots
+`a` and `b` are given by lists (one element per value). The value set for slot
+`c` is specified via a matrix (one row per element). Slot `d` only defines
+a singleton value, since atomic vectors are interpreted as one row matrices.
+The values in slots `b`, `c`, and `d` will be recycled to match the length of
+slot `a`, which has 4 values.
 
 ```{r}
 slot_list <- list(
   a = list(1, 2, 3, 4),
-  b = list("one", "two")
+  b = list("one", "two"),
+  c = matrix(5:8, nrow=2L),
+  d = 9:11 # Equivalent to list(9:11) or matrix(9:11, nrow=1L)
 )
 
 ei <- EnsembleInput(rule_recycle, slot_list)
@@ -132,6 +140,9 @@ print(ei$idx_mat)
 
 # Visualizing runs (slot tags)
 get_labeled_idx_mat(ei)
+
+# The third run input
+input_slots(get_run_input(ei, "run_3"))
 ```
 
 The main object defining the runs for a `EnsembleBroadcastInput` is the 
@@ -142,12 +153,12 @@ for an `EnsembleInputBroadcast` prints this latter visualization.
 ```{r}
 print(ei)
 ```
+
 The table of actual slot values (rather than values) can also be formed as before.
-Recall that the type of columns other than `run_id` defaults to lists. We 
-simplify the list columns below.
+Recall that the type of columns other than `run_id` defaults to lists.
 
 ```{r}
-as_ensemble_input_table(ei) %>% tidyr::unnest(cols = everything())
+as_ensemble_input_table(ei)
 ```
 
 As with any
@@ -164,14 +175,16 @@ print_tree(run_input)
 ```
 `ModelInput`s with a tree structure (depth greater than one) can be accommodated
 in `EnsembleInputBroadcast` by setting the names in the slot list to be the
-note keys.
+note keys. If one wants a multidimensional array to be treated as a single
+value, rather than a collection of values, then make sure to wrap it in a list.
 
 
 ```{r}
 slot_list <- list(
   `a/b/c` = list(1, 2, 3, 4),
   `a/b/d` = list("one", "two"),
-  `a/e` = list(100)
+  `a/e` = 100, # Equivalent to list(100) or matrix(100),
+  `a/f` = list(matrix(5:8, nrow=2L)) # Wrapped in list so treated as single value
 )
 
 ei <- EnsembleInput(rule_recycle, slot_list)
@@ -182,7 +195,7 @@ cat("\nRun 2:\n")
 print_tree(get_run_input(ei, "run_2"))
 ```
 
-The above example also illustrates an example where the values in multiple
+The above example also illustrates a case where the values in multiple
 slots are recycled. Unlike base R, an error will be thrown if the length
 of any of the shorter axes does not divide the length of the longest axis
 evenly.
@@ -191,7 +204,8 @@ evenly.
 slot_list <- list(
   `a/b/c` = list(1, 2, 3, 4),
   `a/b/d` = list("one", "two"),
-  `a/e` = list(100, 200, 300)
+  `a/e` = list(100, 200, 300),
+  `a/f` = list(matrix(5:8, nrow=2L))
 )
 
 try(EnsembleInput(rule_recycle, slot_list))
@@ -205,12 +219,18 @@ Another pre-defined rule allows taking all possible combinations of slot values.
 slot_list <- list(
   a = list(1, 2, 3),
   b = list("one", "two"),
-  c = list(100)
+  c = 100,
+  d = array(1:24, dim=c(2,3,4)) # Two values, each 3x4 arrays
 )
 
+# Ensemble
 ei <- EnsembleInput(rule_cartesian, slot_list)
 print(ei)
+
+# Inspecting a single run
+input_slots(get_run_input(ei, "run_11"))
 ```
+
 ## Matching across equal-length dimensions
 The match rule simply lines up slot values for slots that have the same length.
 
@@ -236,7 +256,7 @@ in a total of 12 runs.
 slot_list <- list(
   a = list(1, 2, 3, 4, 5, 6),
   b = list("seven", "eight", "nine"),
-  c = list(10, 11)
+  c = matrix(10:11, nrow=2L) # Equivalent to list(10, 11)
 )
 
 rule <- get_composite_rule(groups = list(c(1,2), c(3)),
@@ -269,7 +289,7 @@ slot_list <- list(
   ic = list("ic_site1_1", "ic_site2_1", "ic_site3_1", 
             "ic_site1_2", "ic_site2_2", "ic_site3_2",
             "ic_site1_3", "ic_site2_3", "ic_site3_3"),
-  par = list("p1", "p2")
+  par = matrix(c("p1", "p2"), nrow=2L) # Equivalent to list("p1", "p2")
 )
 
 # Broadcast

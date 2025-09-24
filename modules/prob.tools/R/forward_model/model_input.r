@@ -232,10 +232,12 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
   paste(node_path, collapse="/")
 }
 
+
 # key should not begin with "/"
 .node_key_to_path <- function(node_key) {
   strsplit(node_key, split="/", fixed=TRUE)[[1]]
 }
+
 
 leaf_names <- function(x) {
   check_model_input_type(x)

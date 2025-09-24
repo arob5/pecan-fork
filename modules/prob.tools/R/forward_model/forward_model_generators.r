@@ -40,38 +40,41 @@
 
 # Start simple by not vectorizing; just pass one value, which then gets 
 # broadcast out according to the template.
-gen_array_fwd_model <- function(obj, default, slot_names, verbose=TRUE) {
+gen_matrix_fwd_model <- function(obj, default, slot_names, verbose=TRUE) {
 
   # Freeze arguments.
   force(obj); force(default); force(slot_names)
-  .validate_array_fwd_model(default, slot_names)
-
-  # Flattened list containing all slots.
-  free_slots <- do.call(c, default$slots[slot_names]) 
-  free_slot_dims <- lapply(free_slots, get_array_like_dim)
   
-  if(verbose) print_fwd_model_description(obj, default, slot_names)
+  slot_dims <- .validate_matrix_fwd_model(default, slot_names)
+  ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
+  input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
+  
+  if(verbose) print_fwd_model_description(obj, default, slot_names, input_dim)
 
   function(input_mat, ...) {
-    ens_input <- update_ens_input_free_slots(default, input_mat, free_slot_dims,
-                                             slot_name_map)
+    ens_input <- update_free_slots(default, input_mat, slot_names, input_dim, ncol_per_slot)
     run_model_ensemble(obj, ens_input, ...)
   }
 }
 
 
-update_ens_input_free_slots <- function(ens_input, input_mat, free_slot_names, 
-                                        free_slot_dims) {
+update_free_slots <- function(ens_input, input_mat, free_slot_names,
+                              input_dim, ncol_per_slot) {
   
-  # Flat list containing values from all slots.
-  vals <- .flat_to_batched_array_list(input_mat, free_slot_dims)
+  input_mat <- wrap_as_multidim_array(input_mat)
+  assert_that(is.matrix(input_mat))
   
-  # Allocate values to each slot.
+  if(!all(dim(input_mat) == input_dim)) {
+    stop("Forward model input has dimension ", .get_dims_string(dim(input_mat)),
+         ". Expected dimension ", .get_dims_string(input_dim))
+  }
+  
+  # Allocate values to each slot. Order of free_slot_names matters here.
   idx_start <- 1L
   for(i in seq_along(free_slot_names)) {
     nm <- free_slot_names[[i]]
-    idx_end <- idx_start + length(ens_input$slots[[nm]]) - 1L
-    ens_input$slots[[nm]] <- vals[idx_start:idx_end]
+    idx_end <- idx_start + ncol_per_slot[i] - 1L
+    ens_input$slots[[nm]] <- input_mat[,idx_start:idx_end, drop=FALSE]
     idx_start <- idx_end + 1L
   }
   
@@ -79,7 +82,7 @@ update_ens_input_free_slots <- function(ens_input, input_mat, free_slot_names,
 }
 
 
-.validate_array_fwd_model <- function(default, slot_names) {
+.validate_matrix_fwd_model <- function(default, slot_names) {
   check_ensemble_input_broadcast_type(default)
   
   if(anyDuplicated(slot_names) > 0L) {
@@ -90,18 +93,48 @@ update_ens_input_free_slots <- function(ens_input, input_mat, free_slot_names,
   if(length(invalid_slot_names) > 0L) {
     stop("Invalid slot names: ", paste(invalid_slot_names, ", "))
   }
-  
-  free_slots <- default$slots[slot_names]
-  for(l in free_slots) .check_input_is_array_list(l)
 
-  invisible(TRUE)
+  # Ensure all selected slots are flattened batch arrays (matrix). Slot values
+  # are stored in the rows of the matrix.
+  free_slots <- default$slots[slot_names]
+  
+  if(!all(vapply(free_slots, is_matrix_like, logical(1)))) {
+    stop("Matrix forward model requires all free slots to be matrices ",
+         "(one row per value)")
+  }
+  
+  free_slots <- lapply(free_slots, wrap_as_multidim_array)
+  n_batch_per_slot <- vapply(free_slots, nrow, integer(1))
+  if(length(unique(n_batch_per_slot)) > 1L) {
+    stop("Matrix forward model requires all slots to have same batch size ",
+         "(number or rows).")
+  }
+  
+  # Return dimensions of each slot.
+  invisible(lapply(free_slots, dim))
 }
 
 
+print_fwd_model_description <- function(obj, default, slot_names, input_dim) {
+  
+  cat("--- Generating forward model with matrix input ---\n\n")
+  
+  cat("Forward model signature: function(input_mat, ...)\n")
+  cat("input_mat shape: ", .get_dims_string(input_dim), "\n", sep="")
+  cat("Free slots: ")
+  cat(paste(slot_names, collapse=", "), "\n\n")
+  
+  method_name <- paste0("run_model.", class(obj)[1])
+  cat("Run model method:", method_name,"\n\n")
+
+  cat("Default EnsembleInput:\n")
+  summary(default)
+}
 
 
-
-
+.get_dims_string <- function(dims) {
+  paste0("(", paste(dims, collapse=","), ")")
+}
 
 
 

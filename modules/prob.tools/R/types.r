@@ -3,6 +3,32 @@
 # Helper functions for checking that R objects satisfy the requirements of
 # particular user-defined "types".
 
+#' Check if object is array or vector
+#' 
+#' A vector is viewed as a single-row matrix (which is an array).
+#'
+#' @returns logical, \code{TRUE} is \code{x} is an array or vector, else
+#'  \code{FALSE}.
+#' 
+#' @author Andrew Roberts
+is_array_like <- function(x) {
+  is.array(x) || (is.vector(x) && is.atomic(x))
+}
+
+
+#' Check if object is matrix or vector
+#' 
+#' A vector is viewed as a single-row matrix.
+#'
+#' @returns logical, \code{TRUE} is \code{x} is a matrix or vector, else
+#'  \code{FALSE}.
+#' 
+#' @author Andrew Roberts
+is_matrix_like <- function(x) {
+  is.array(x) || (is.vector(x) && is.atomic(x))
+}
+
+
 #' Check that R object has full set of names
 #' 
 #' Check if an R object has a unique set of names. Every element of the object

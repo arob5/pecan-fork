@@ -25,19 +25,6 @@ is_batch_array <- function(x) {
 }
 
 
-#' Check if object is array or vector
-#' 
-#' A vector is viewed as a single-row matrix (which is an array).
-#'
-#' @returns logical, \code{TRUE} is \code{x} is an array or vector, else
-#'  \code{FALSE}.
-#' 
-#' @author Andrew Roberts
-is_array_like <- function(x) {
-  is.array(x) || (is.vector(x) && is.atomic(x))
-}
-
-
 #' Convert batch array to flattened (matrix) representation
 #' 
 #' Converts an array (or vector), to a standardized flat representation.
@@ -354,6 +341,86 @@ is_array_like <- function(x) {
   if(is.array(x)) x <- array(x, dim=c(1L, dim(x)))
   .wrap_and_check_batch_array(x)
 }
+
+
+#' Wrap single-dimension objects as 2d array
+#'
+#' Wraps atomic vectors, one dimensional arrays, and zero dimensional arrays
+#' as a one-row matrix (i.e., a 2d array). Existing arrays with at least two
+#' dimensions are returned unchanged.
+#' 
+#' @param x An R object
+#' @param err logical(1), if \code{TRUE} throws error if \code{x} is not
+#'  array-like. Otherwise, will return non-array like objects unchanged.
+#'
+#' @returns An array with at least two dimensions. Throws error if 
+#'  \code{err = TRUE} and \code{x} is not array-like.
+#'  
+#' @author Andrew Roberts
+wrap_as_multidim_array <- function(x, err=TRUE) {
+  
+  if(!is_array_like(x)) {
+    if(err) stop("`x` must be array-like to be wrapped as an array.")
+    else return(x)
+  }
+  
+  if(is.vector(x) || length(dim(x)) < 2L) x <- matrix(x, nrow=1L)
+  return(x)
+}
+
+
+#' Extract element from first dimension of an array
+#'
+#' @details
+#' For example, for a 3-d array this returns \code{x[index,,drop=TRUE]}.
+#' If the result is a vector and \code{force_array_output = TRUE} then
+#' it is wrapped as a one-row matrix so that the function always returns an
+#' array. Otherwise, it is returned as is. This helper can be used to select
+#' values from batched arrays and flattened batch arrays, since both reserve
+#' the first index as the batch dimension.
+#' 
+#' @author Andrew Roberts
+index_first_dim <- function(x, index, force_array_output=TRUE) {
+  if(index < 1L) {
+    stop("`index` must be an integer >= 1.")
+  }
+  
+  assert_that(is_array_like(x))
+  if(is.vector(x) || length(dim(x)) < 2L) x <- matrix(x, nrow=1L)
+  
+  n_dims <- length(dim(x))
+  args <- c(list(index), rep(list(quote(expr=)), n_dims-1), list(drop=TRUE))
+  val <- do.call(`[`, c(list(x), args))
+  
+  if(is.vector(val) && force_array_output) matrix(val, nrow=1L)
+  else val
+}
+
+
+#' Extract an element from the batch (first) dimension of a batch array.
+#' e.g., for 3-d array extracts \code{x[index,,drop=TRUE]}. The one exception
+#' is when this results in a vector. In this case, the vector is wrapped as 
+#' a one row matrix to ensure that this function always returns an array for
+#' type consistency.  
+index_batch_dim <- function(x, index) {
+  
+  if(index < 1L) {
+    stop("`index` must be an integer >= 1.")
+  }
+  
+  x <- .wrap_vector_as_batch_array(x)
+  assert_that(is_batch_array(x))
+  
+  n_dims <- length(dim(x))
+  args <- c(list(index), rep(list(quote(expr=)), n_dims-1), list(drop=TRUE))
+  val <- do.call(`[`, c(list(x), args))
+  
+  if(is.vector(val)) matrix(val, nrow=1L)
+  else val
+}
+
+
+
 
 
 
