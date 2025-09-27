@@ -10,8 +10,16 @@
 
 # `EnsembleInputBroadcast` currently does not support run metadata.
 # It also currently requires all runs to have the same slots. All
-# of these can eventually be accommodated. For the latter, `idx_mat` could be
+# of these can eventually be accommodated. For the latter, `mat_rule` could be
 # allowed to have NA values.
+
+
+EnsembleInputBroadcast <- function(slots, list_rule=NULL, fn_rule=NULL, mat_rule=NULL) {
+  x <- .new_ensemble_input_broadcast(slots, list_rule, fn_rule, mat_rule)
+  validate_ensemble_input_broadcast(x)
+  
+  return(x)
+}
 
 
 #' Construct ensemble model input in broadcast format from index matrix
@@ -23,9 +31,9 @@
 #' 
 #' @details
 #' An \code{EnsembleInputBroadcast} is defined by two fields: \code{slots} and
-#' \code{idx_mat}. The former is a named list of input fields/types ("slots").
+#' \code{mat_rule}. The former is a named list of input fields/types ("slots").
 #' The names defined the slot names. The values must themselves be lists 
-#' containing a unique set of values for each slot. \code{idx_mat} is an
+#' containing a unique set of values for each slot. \code{mat_rule} is an
 #' integer matrix of shape \code{(n_runs, n_slots)}. The \code{(i,j)} element 
 #' contains the index of the list \code{slots[[j]]}, which is the value to use 
 #' in the jth slot for the ith run. The row names of this matrix define the 
@@ -35,7 +43,7 @@
 #' a "broadcast rule". See the alternative constructor 
 #' \code{\link{EnsembleInput.function}} for more information.
 #'
-#' @param idx_mat An integer matrix of dimension \code{(n_runs, n_slots)}.
+#' @param mat_rule An integer matrix of dimension \code{(n_runs, n_slots)}.
 #'  The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
 #'  which is the value to use in the jth slot for the ith run. Row names will
 #'  be interpreted as run IDs, with defaults defined if not explicitly provided.
@@ -48,9 +56,9 @@
 #'
 #' @author Andrew Roberts
 #' @export
-EnsembleInput.matrix <- function(idx_mat, slots) {
+EnsembleInput.matrix <- function(mat_rule, slots) {
   
-  x <- .new_ensemble_input_broadcast(slots, idx_mat=idx_mat,
+  x <- .new_ensemble_input_broadcast(slots, mat_rule=mat_rule,
                                      broadcast_rule=NULL)
   validate_ensemble_input_broadcast(x)
 
@@ -70,7 +78,7 @@ EnsembleInput.matrix <- function(idx_mat, slots) {
 #' (see \code{\link{EnsembleInput.matrix}} for more detailed documentation on
 #' the definition of an \code{EnsembleInputBroadcast}).
 #' This constructor instead takes a broadcast rule, which is used to construct
-#' \code{idx_mat}. Let \code{lens <- sapply(slots, length)} denote the length 
+#' \code{mat_rule}. Let \code{lens <- sapply(slots, length)} denote the length 
 #' of each slot dimension. When called like \code{broadcast_rule(lens)}, the 
 #' broadcast rule must return an integer matrix of shape \code{(n_runs, n_slots)}.
 #' The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
@@ -94,7 +102,7 @@ EnsembleInput.matrix <- function(idx_mat, slots) {
 #' @export
 EnsembleInput.function <- function(broadcast_rule, slots) {
 
-  x <- .new_ensemble_input_broadcast(slots, idx_mat=NULL,
+  x <- .new_ensemble_input_broadcast(slots, mat_rule=NULL,
                                      broadcast_rule=broadcast_rule)
   validate_ensemble_input_broadcast(x)
   
@@ -109,54 +117,56 @@ EnsembleInput.function <- function(broadcast_rule, slots) {
 #' public interface and additional documentation.
 #' 
 #' @details
-#' Exactly one of \code{idx_mat} or \code{broadcast_rule} must be non-\code{NULL}.
-#' If the latter is provided, then \code{idx_mat} is constructed using the
-#' broadcast rule. The row names of \code{idx_mat} are interpreted as run IDs,
+#' Exactly one of \code{mat_rule} or \code{broadcast_rule} must be non-\code{NULL}.
+#' If the latter is provided, then \code{mat_rule} is constructed using the
+#' broadcast rule. The row names of \code{mat_rule} are interpreted as run IDs,
 #' and therefore should be unique. Default run IDs of the form `run_<row-idx>`
 #' are assigned if not provided.
 #' 
 #' @param slots A named list of slot value sets. The jth element of \code{slots}
 #'  is itself a list, containing a unique set of values for that slot.
-#' @param idx_mat An integer matrix of dimension \code{(n_runs, n_slots)}.
+#' @param list_rule list, a list representation of a broadcast rule.
+#' @param fn_rule function, a broadcast rule function. See details for requirements.
+#' @param mat_rule matrix, an integer matrix of dimension \code{(n_runs, n_slots)}.
 #'  The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
 #'  which is the value to use in the jth slot for the ith run.
-#' @param broadcast_rule A broadcast rule function. See details for requirements.
 #' 
 #' @returns An object of class \code{EnsembleInputBroadcast}, inheriting from 
 #'  \code{EnsembleInput}.
 #' 
-#' @seealso \code{\link{EnsembleInput.matrix}}, \code{\link{EnsembleInput.function}}
+#' @seealso \code{\link{get_broadcast_rule}}
 #' @author Andrew Roberts
-.new_ensemble_input_broadcast <- function(slots, idx_mat, broadcast_rule) {
+.new_ensemble_input_broadcast <- function(slots, list_rule, fn_rule, mat_rule) {
 
+  rule_formats <- list(list_rule, fn_rule, mat_rule)
+  if(sum(vapply(rule_formats, Negate(is.null), logical(1))) != 1L) {
+    stop("Exactly one of `list_rule`, `fn_rule`, `mat_rule` must be non-NULL.")
+  }
+  
   if(!is_named_or_empty_list(slots)) {
     stop("`slots` must be named or empty list.")
   }
 
-  if(!xor(is.null(idx_mat), is.null(broadcast_rule))) {
-    stop("Exactly one of `idx_mat` and `broadcast_rule` must be NULL.")
-  }
+  if(!is.null(list_rule)) fn_rule <- get_broadcast_rule(names(slots), list_rule, drop_absent_axes=FALSE)
+  if(!is.null(fn_rule)) mat_rule <- .broadcast_slots(slots, fn_rule) 
 
-  # Construct the index matrix by applying the broadcast rule.
-  if(is.null(idx_mat)) idx_mat <- .broadcast_slots(slots, broadcast_rule)
-  
   # Assign default run IDs if needed.
-  if(is.null(rownames(idx_mat))) {
-    rownames(idx_mat) <- paste0("run_", seq_len(nrow(idx_mat)))
+  if(is.null(rownames(mat_rule))) {
+    rownames(mat_rule) <- paste0("run_", seq_len(nrow(mat_rule)))
   }
   
   # Assign slot names as column names, if needed. Sort columns to align with
   # slots order.
-  if(is.null(colnames(idx_mat))) {
-    message("No column names provided for `idx_mat`. Setting to `names(slots)`,",
+  if(is.null(colnames(mat_rule))) {
+    message("No column names provided for `mat_rule`. Setting to `names(slots)`,",
             " which assumes column order aligns with slot order.")
     
-    colnames(idx_mat) <- names(slots)
+    colnames(mat_rule) <- names(slots)
   } else {
-    idx_mat <- idx_mat[,names(slots)]
+    mat_rule <- mat_rule[,names(slots)]
   }
   
-  structure(list(slots=slots, idx_mat=idx_mat, rule=broadcast_rule),
+  structure(list(slots=slots, list_rule=list_rule, fn_rule=fn_rule, mat_rule=mat_rule),
             class = c("EnsembleInputBroadcast", "EnsembleInput"))
 }
 
@@ -196,14 +206,14 @@ check_ensemble_input_broadcast_type <- function(x) {
 #' Validates the general structure of a \code{EnsembleInputBroadcast} object. 
 #'
 #' @details
-#' Must contain \code{slots}, \code{idx_mat}, and \code{rule} fields.
+#' Must contain \code{slots}, \code{mat_rule}, and \code{rule} fields.
 #' \code{slots} must be a named list (or empty list). All elements of 
-#' \code{slots} must themselves be lists. \code{idx_mat} must be an integer 
+#' \code{slots} must themselves be lists. \code{mat_rule} must be an integer 
 #' matrix with number of cols equal to \code{length(slots)}. The values in 
-#' column \code{j} of \code{idx_mat} must be integers between 1 and
+#' column \code{j} of \code{mat_rule} must be integers between 1 and
 #' \code{length(slots[[j]])}. \code{rule} must be a function, or \code{NULL}.
-#' \code{idx_mat} must have unique and non-missing row names for all rows, 
-#' as the row names are interpreted as the run IDs. \code{idx_mat} must 
+#' \code{mat_rule} must have unique and non-missing row names for all rows, 
+#' as the row names are interpreted as the run IDs. \code{mat_rule} must 
 #' have column names set to \code{names(slots)}, in the same order.
 #'
 #' @param x An object.
@@ -216,65 +226,72 @@ validate_ensemble_input_broadcast <- function(x) {
   
   check_ensemble_input_broadcast_type(x)
   
-  if(!("idx_mat" %in% names(x))) {
-    stop("`EnsembleInputBroadcast$idx_mat` list is missing.")
-  }
+  required_fields <- c("slots", "list_rule", "fn_rule", "mat_rule")
+  missing_fields <- setdiff(names(x), required_fields)
   
-  if(!("slots" %in% names(x))) {
-    stop("`EnsembleInputBroadcast$slots` list is missing.")
+  if(length(missing_fields) > 0L) {
+    stop("EnsembleInputBroadcast is missing fields: ", 
+         paste(missing_fields, collapse=", "))
   }
-  
-  if(!("rule" %in% names(x))) {
-    stop("`EnsembleInputBroadcast$rule` list is missing.")
-  }
-  
-  idx_mat <- x$idx_mat
+
   slots <- x$slots
-  rule <- x$rule
+  list_rule <- x$list_rule
+  fn_rule <- x$fn_rule
+  mat_rule <- x$mat_rule
   
-  if(!is_named_or_empty_list(slots, check_unique_names=TRUE)) {
-    stop("EnsembleInputBroadcast$slots must be a named list or empty list.")
+  assert_that(is.list(slots), msg="`slots` must be a list.")
+  if(length(slots) > 0L && !has_unique_names(slots)) {
+    stop("EnsembleInputBroadcast$slots must be a named list with unique names.")
+  }
+
+  # Ensure list_rule is a valid broadcast list representation.
+  if(!is.null(list_rule)) {
+    tryCatch({
+      .standardize_list_rule(names(slots), list_rule, drop_absent_axes=FALSE)
+    }, error = function(e) {
+      stop("`list_rule` is invalid: ", e$message)
+    })
   }
   
-  if(!is.function(rule) && !is.null(rule)) {
-    stop("EnsembleInputBroadcast$rule must be a function or NULL.")
+  if(!is.function(fn_rule) && !is.null(fn_rule)) {
+    stop("EnsembleInputBroadcast$fn_rule must be a function or NULL.")
   }
   
-  if(!is.matrix(idx_mat) || !is_integer_like(idx_mat)) {
-    stop("EnsembleInputBroadcast$idx_mat must be an integer matrix.")
+  if(!is.matrix(mat_rule) || !assertthat:::is.integerish(mat_rule)) {
+    stop("EnsembleInputBroadcast$mat_rule must be an integer matrix.")
   }
   
-  if(is.null(rownames(idx_mat))) {
-    stop("EnsembleInputBroadcast$idx_mat is missing row names (run IDs).")
+  if(is.null(rownames(mat_rule))) {
+    stop("EnsembleInputBroadcast$mat_rule is missing row names (run IDs).")
   }
   
-  row_names <- rownames(idx_mat)
+  row_names <- rownames(mat_rule)
   
   if(is.null(row_names)) {
-    stop("EnsembleInputBroadcast$idx_mat is missing row names (run IDs).")
+    stop("EnsembleInputBroadcast$mat_rule is missing row names (run IDs).")
   }
   
   if(!all(nzchar(row_names)) || anyDuplicated(row_names)) {
-    stop("EnsembleInputBroadcast$idx_mat has duplicate or missing row names (run IDs).")
+    stop("EnsembleInputBroadcast$mat_rule has duplicate or missing row names (run IDs).")
   }
   
-  if(!all(colnames(idx_mat) == names(slots))) {
-    stop("EnsembleInputBroadcast$idx_mat must have column names identical to `names(slots)`.")
+  if(!all(colnames(mat_rule) == names(slots))) {
+    stop("EnsembleInputBroadcast$mat_rule must have column names identical to `names(slots)`.")
   }
   
   if(!all(vapply(slots, is_slot_value_set, logical(1)))) {
     stop("EnsembleInputBroadcast$slots must be a list of valid slot value sets.")
   }
   
-  if(ncol(idx_mat) != length(slots)) {
-    stop("EnsembleInputBroadcast dimension mismatch between `idx_mat` and `slots`.")
+  if(ncol(mat_rule) != length(slots)) {
+    stop("EnsembleInputBroadcast dimension mismatch between `mat_rule` and `slots`.")
   }
   
-  if(ncol(idx_mat) > 0L) {
-    for(j in seq_len(ncol(idx_mat))) {
+  if(ncol(mat_rule) > 0L) {
+    for(j in seq_len(ncol(mat_rule))) {
       max_idx <- length(slots[[j]])
-      if(!all(idx_mat[,j] >= 1L & idx_mat[,j] <= max_idx)) {
-        stop("`idx_mat` contains invalid entries in column ", j,
+      if(!all(mat_rule[,j] >= 1L & mat_rule[,j] <= max_idx)) {
+        stop("`mat_rule` contains invalid entries in column ", j,
              " Entries must be between 1 and length(slots[[", j, "]]) = ", max_idx)
       }
     }
@@ -309,7 +326,7 @@ is_slot_value_set <- function(x) {
 #' @author Andrew Roberts
 #' @export
 run_ids.EnsembleInputBroadcast <- function(x, ...) {
-  rownames(x$idx_mat)
+  rownames(x$mat_rule)
 }
 
 
@@ -406,10 +423,10 @@ as_ensemble_input_broadcast.EnsembleInputBroadcast <- function(x, ...) {
 get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
   stopifnot(is_character_scalar(run_id))  
 
-  if(!(run_id %in% rownames(x$idx_mat))) raise_run_id_not_found_error(run_id)
+  if(!(run_id %in% rownames(x$mat_rule))) raise_run_id_not_found_error(run_id)
   
   # Construct ModelInput object.
-  slot_idxs <- x$idx_mat[run_id,] # Has names set to slot names
+  slot_idxs <- x$mat_rule[run_id,] # Has names set to slot names
   slots <- instantiate_slots(slot_idxs, x$slots)
 
   unflatten_model_input(slots)
@@ -419,24 +436,24 @@ get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
 #' Replace Index Matrix with String Label Matrix for Easier Interpretation
 #' 
 #' Convenience function to help visualize the ensemble inputs. In particular,
-#' returns a matrix of the same shape as \code{x$idx_mat}, where the integer
+#' returns a matrix of the same shape as \code{x$mat_rule}, where the integer
 #' indices have been replaced by character labels of the form 
 #' \code{<slot_name>_j} for the jth value of a slot.
 #' 
 #' @param x An \code{EnsembleInputBroadcast}.
 #'  
 #' @returns character matrix. The \code{(i,j)} entry contains the value
-#'  \code{paste(slot_names(x)[[j]], x$idx_mat[i,j], sep="_")}. Note that this
+#'  \code{paste(slot_names(x)[[j]], x$mat_rule[i,j], sep="_")}. Note that this
 #'  is just a label that provides the index of the value within the slot. This
 #'  is NOT the slot value itself (which may be a structured object, not just
 #'  a string).
 #'  
 #' @author Andrew Roberts
 #' @export
-get_labeled_idx_mat <- function(x) {
+get_labeled_mat_rule <- function(x) {
   check_ensemble_input_broadcast_type(x)
-  run_table <- visualize_slot_grid(x$idx_mat, slot_names(x))
-  rownames(run_table) <- rownames(x$idx_mat)
+  run_table <- visualize_slot_grid(x$mat_rule, slot_names(x))
+  rownames(run_table) <- rownames(x$mat_rule)
   
   return(run_table)
 }
@@ -530,7 +547,7 @@ slot_list_from_tree <- function(tree, slot_names) {
 #' @export
 print.EnsembleInputBroadcast <- function(x, ...) {
   cat("<EnsembleInputBroadcast>\n")
-  print(get_labeled_idx_mat(x))
+  print(get_labeled_mat_rule(x))
 }
 
 
@@ -575,7 +592,7 @@ print.EnsembleInputBroadcast <- function(x, ...) {
 
 #' Compute index matrix from broadcast rule
 #' 
-#' Helper function which constructs \code{idx_mat} by applying the 
+#' Helper function which constructs \code{mat_rule} by applying the 
 #' broadcast rule function to the slot list.
 #' 
 #' @param broadcast_rule A broadcast rule function. 
@@ -587,6 +604,8 @@ print.EnsembleInputBroadcast <- function(x, ...) {
 #' @author Andrew Roberts
 .broadcast_slots <- function(slots, broadcast_rule) {
   lens <- vapply(slots, n_vals_in_slot, integer(1))
+  names(lens) <- names(slots)
+  
   broadcast_rule(lens)
 }
 
@@ -625,21 +644,21 @@ n_vals_in_slot <- function(x) {
   new_n_runs <- n_runs_x + n_runs_y
   new_run_ids <- paste0("run_", seq_len(new_n_runs))
   
-  new_idx_mat <- matrix(nrow = new_n_runs,
+  new_mat_rule <- matrix(nrow = new_n_runs,
                         ncol = length(new_slot_names),
                         dimnames = list(new_run_ids, new_slot_names))
   
   for(i in seq_along(new_slot_names)) {
     nm <- new_slot_names[[i]]
     
-    if(nm %in% slot_names_x) new_idx_mat[1:n_runs_x, nm] <- x$idx_mat[,nm]
+    if(nm %in% slot_names_x) new_mat_rule[1:n_runs_x, nm] <- x$mat_rule[,nm]
     if(nm %in% slot_names_y) {
       shift <- length(x$slots[[nm]])
-      new_idx_mat[(n_runs_x+1L):new_n_runs, nm] <- y$idx_mat[,nm] + shift
+      new_mat_rule[(n_runs_x+1L):new_n_runs, nm] <- y$mat_rule[,nm] + shift
     }
   }
   
   # Construct new EnsembleInputBroadcast
-  EnsembleInput(new_idx_mat, new_slots)
+  EnsembleInput(new_mat_rule, new_slots)
 }
 

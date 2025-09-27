@@ -37,10 +37,8 @@ slot_list <- list(
   c = matrix(7:14, nrow=4L) # Four different values of the parameter vector
 )
 
-rule <- get_composite_rule(groups = list(c(1,2), c(3)),
-                           rules = list(rule_recycle, rule_match))
-
-ei <- EnsembleInput(rule, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, 
+                             list_rule = list(recycle = c("a", "b")))
 
 # Summary of ensemble
 summary(ei)
@@ -51,6 +49,34 @@ print(ei)
 # Looking at inputs for a particular run
 input_slots(get_run_input(ei, "run_20"))
 ```
+
+
+```{r}
+# Define so that the forward model accepts one value per free slot
+# Or multiple such values; i.e., not passing in "value sets".
+# If passing one value per slot, there is no need to pass a "new_slot_rule"
+# since there is only one way the slots can be combined (matching).
+# I guess for now keep the current approach of assuming that the current ei
+# stores the "batch dims" for these slots, and we back out the individual value
+# dimension.
+#
+# Allow passing values as:
+#  (1) list of arrays
+#  (2) list of lists of arrays (all sub-lists must be of equal length)
+#  (3) matrix (flat representation - one row per value)
+#
+# With this setup, there is only one way that the free slots can be broadcast -
+# taking a product with the fixed slots. So perhaps it makes more sense to 
+# specify a "base" ens_input that only has fixed slots. Any new slots will
+# be matched against each other, and then Cartesian product'd against the
+# existing fixed slots. This is a fairly natural notion of "vectorized".
+
+gen_vectorized_forward_model(f, base_ens_input,
+                             new_slot_dims=list(d=4, e=c(3,3)),
+                             output_operator)
+```
+
+
 Suppose we want to generate a forward model that uses this ensemble run as 
 the "run template"; that is, each execution of the forward model will run
 the underlying model 24 times. Suppose also that we want to be able to pass in

@@ -1,6 +1,163 @@
 # forward_model/broadcast_rules.r
 
 
+#' API for Constructing Broadcast Rule Function
+#'
+#' Provides a high-level interface to \code{\link{construct_composite_rule}}.
+#' 
+#' @details
+#' \code{axis_names} defines a set of named axes/dimensions.
+#' \code{list_rule} is a list that determines how the axes should be broadcast.
+#' The list is of the format \code{list(recycle = c("a", "b"), match = c("c", "d"))}. 
+#' In this example, the values in the axes \code{a} and \code{b} will be recycled to 
+#' the same length, while the values in the axes \code{c} and \code{d} will 
+#' be matched in a one-to-one fashion. A Cartesian product will then be taken 
+#' across the resulting two sets of combinations. By default, a product will
+#' also be taken with respect to any axes not explicitly named in the rule.
+#' If \code{drop_absent_axes = TRUE} then any axes not explictly named will be
+#' dropped, so that the broadcast rule operates only on a subset of the axes.
+#' 
+#' When operating on a single axis -- e.g., \code{c} in 
+#' \code{list(recycle = c("a", "b"), identity = "c")} most of the supported broadcast
+#' rules will have the effect of the identity function. For clarity, it is 
+#' recommended to explicitly use the identity rule \code{identity} in this case,
+#' which is only defined with respect to a single axis.
+#' 
+#' @param axis_names character, unique axis names.
+#' @param list_rule named list, with names set to valid broadcast rules and 
+#'  values set to character vectors defining the axis groups to which each
+#'  rule will be applied. Axis names cannot be repeated across multiple rules.
+#'  At present, valid rules include 
+#'  \code{"recycle", "match", "broadcast", "product", "identity"}.
+#' @param drop_absent_axes logical(1), if \code{TRUE} then any axes in \code{axis_names}
+#'  but not included in \code{list_rule} will be dropped so that the constructed
+#'  broadcast rule operates only on the remaining subset of axes. If \code{FALSE},
+#'  (default), then a Cartesian product is taken with all unnamed axes.
+#'  
+#' @returns A function representing a broadcast rule.
+#' 
+#' @seealso \code{\link{construct_composite_rule}}
+#' 
+#' @author Andrew Roberts
+#' @export
+get_broadcast_rule <- function(axis_names, list_rule, drop_absent_axes=FALSE) {
+  
+  res <- .standardize_list_rule(axis_names, list_rule, drop_absent_axes)
+  axis_names <- res$axis_names; list_rule <- res$list_rule
+  rule_funs <- lapply(names(list_rule), match.fun)
+  
+  construct_composite_rule(groups=list_rule, rules=rule_funs)
+}
+
+
+#' Combine rules by grouping axes
+#'
+#' Constructs a new broadcasting rule function by combining existing rule
+#' functions. The function applies the sub-rules to "axis groups", and then 
+#' takes the Cartesian product of the resulting combinations.
+#'
+#' @param groups A list of integer vectors (giving axis indices), or character
+#'  vectors (giving axis names), where the vectors define the axis subset that
+#'  will be handled by each sub-rule.
+#' @param rules A list of rule functions, one per axis group.
+#' 
+#' @returns A new rule function, with signature \code{fun(lens)}.
+#' 
+#' @details
+#' This is a lower level version of \code{\link{get_broadcast_rule}}; the
+#' latter has more safeguards and is generally recommended for most use cases.
+#' While the higher-level API requires named axes, this function supports
+#' indexes either by name or integer position. If \code{groups} contains 
+#' axis names, then the returned rule function \code{fun(lens)} will require 
+#' \code{lens} to be a named vector. If \code{groups} contains integer indices
+#' then there is no constraint on \code{lens}, but it must be kept in mind that
+#' \code{lens} will be subsetted by index. It is generally recommended to use
+#' names, and this recommendation is enforced in \code{\link{get_broadcast_rule}}.
+#' There is no mixing of indexing strategy allowed across groups; all must be
+#' integer or all must be character.
+#' 
+#' @examples
+#' # By index
+#' lens <- c(2, 2, 4, 1)
+#' rule_composite <- construct_composite_rule(groups = list(1:2, 3:4), 
+#'                                            rules = list(rule_match, rule_recycle))
+#' rule_composite(lens) # Outputs 8 by 4 matrix.
+#' 
+#' # By name (recommended)
+#' lens <- c(w=2, x=2, y=4, z=1)
+#' rule_composite <- construct_composite_rule(groups = list(c("w", "x"), c("y", "z")), 
+#'                                            rules = list(rule_match, rule_recycle))
+#' rule_composite(lens) # Same output as before.
+#' rule_composite(c(2,2,4,1)) # Trying to index by position will throw error
+#' 
+#' @seealso \code{\link{get_broadcast_rule}}
+#' 
+#' @author Andrew Roberts
+#' @export
+construct_composite_rule <- function(groups, rules) {
+  force(groups); force(rules)
+  
+  if(length(groups) != length(rules)) {
+    stop("`construct_composite_rule()` requires `groups` and `rules` to be lists of equal length.")
+  }
+  
+  index_by_name <- is.character(groups[[1]])
+
+  # Composite rule function
+  function(lens) {
+    
+    if(index_by_name) {
+      assert_that(assertthat:::is.named(lens),
+                  msg="`lens` must provide axis names in names attribute.")
+    }
+    
+    # Apply each rule to its group
+    group_mats <- vector("list", length(groups))
+    for(k in seq_along(groups)) {
+      group_axes <- groups[[k]]
+      rule_func <- rules[[k]]
+      group_mats[[k]] <- rule_func(lens[group_axes])
+    }
+    
+    # Cartesian product of the sub-results
+    group_idx_lists <- lapply(group_mats, function(x) seq_len(nrow(x)))
+    index_grid <- do.call(expand.grid, group_idx_lists)
+    out <- matrix(NA_integer_, nrow=nrow(index_grid), ncol=length(lens))
+    colnames(out) <- names(lens)
+    
+    for(row_idx in seq_len(nrow(index_grid))) {
+      for(group_idx in seq_along(groups)) {
+        result_row <- index_grid[row_idx, group_idx]
+        output_axes <- groups[[group_idx]]
+        out[row_idx, output_axes] <- group_mats[[group_idx]][result_row,]
+      }
+    }
+    
+    return(out)
+  }
+}
+
+
+#' Identity broadcast rule
+#' 
+#' Operates on a single axis, and leaves the axis unchanged.
+#'
+#' @param lens integer(1), the length of the single axis.
+#' @returns The single column matrix containing the sequence \code{1:lens}.
+#' 
+#' @author Andrew Roberts
+#' @export
+rule_identity <- function(lens) {
+  .check_lens(lens)
+  
+  if(length(lens) != 1L) {
+    stop("`rule_identity()` can only operate on a single axis.")
+  }
+  
+  matrix(seq_len(lens), ncol=1L)
+}
+
+
 #' Cartesian product broadcast rule
 #' 
 #' Full cartesian product of slot values.
@@ -11,14 +168,17 @@
 #' @examples
 #' # A Cartesian product of three dimensions of size 2, 3 and 2.
 #' # Outputs a matrix with 12 rows and 3 columns.
-#' rule_cartesian(c(2, 3, 2))
+#' rule_product(c(2, 3, 2))
 #' 
 #' @author Andrew Roberts
 #' @export
-rule_cartesian <- function(lens) {
+rule_product <- function(lens) {
   .check_lens(lens)
   grids <- do.call(expand.grid, lapply(lens, seq_len))
-  as.matrix(grids)
+  mat <- as.matrix(grids)
+  colnames(mat) <- NULL
+  
+  return(mat)
 }
 
 
@@ -147,61 +307,6 @@ rule_recycle <- function(lens) {
   idx_mat <- as.matrix(idx_mat)
   colnames(idx_mat) <- NULL
   idx_mat
-}
-
-
-#' Combine rules by grouping slots
-#'
-#' Constructs a new broadcasting rule function by combining existing rule
-#' functions. The function applies the sub-rules to "slot groups", and then 
-#' takes the cartesian product of the resulting input matrices.
-#'
-#' @param groups A list of integer vectors, each giving the positions
-#'   of slots handled by one sub-rule.
-#' @param rules A list of rule functions, one per group.
-#' @returns A new rule function.
-#' 
-#' @examples
-#' # Rule A handles slots 1:2, rule B handles slots 3:4, then cartesian them together
-#' lens <- c(2, 2, 4, 1)
-#' rule_composite <- get_composite_rule(groups = list(1:2, 3:4), 
-#'                                      rules = list(rule_match, rule_broadcast))
-#' rule_composite(lens) # Outputs 8 by 4 matrix.
-#' 
-#' @author Andrew Roberts
-#' @export
-get_composite_rule <- function(groups, rules) {
-  
-  if(length(groups) != length(rules)) {
-    stop("`get_composite_rule()` requires `groups` and `rules` to be lists of equal length.")
-  }
-  
-  # Composite rule function
-  function(lens) {
-
-    # Apply each rule to its group
-    group_mats <- vector("list", length(groups))
-    for(k in seq_along(groups)) {
-      group_slots <- groups[[k]]
-      rule_func <- rules[[k]]
-      group_mats[[k]] <- rule_func(lens[group_slots])
-    }
-    
-    # Cartesian product of the sub-results
-    group_idx_lists <- lapply(group_mats, function(x) seq_len(nrow(x)))
-    index_grid <- do.call(expand.grid, group_idx_lists)
-    out <- matrix(NA_integer_, nrow=nrow(index_grid), ncol=length(lens))
-    
-    for(row_idx in seq_len(nrow(index_grid))) {
-      for(group_idx in seq_along(groups)) {
-        result_row <- index_grid[row_idx, group_idx]
-        output_slots <- groups[[group_idx]]
-        out[row_idx, output_slots] <- group_mats[[group_idx]][result_row,]
-      }
-    }
-    
-    return(out)
-  }
 }
 
 
@@ -391,6 +496,83 @@ instantiate_slot_grid <- function(idx_mat, slots, include_rownames=FALSE,
   } else {
     stop("`slots[[", slot_name, "]] must be a list or array-like.")
   }
+}
+
+
+#' Validation and processing helper function for \code{\link{get_broadcast_rule}}
+#' 
+#' @details
+#' Returns updated/standardized versions of \code{axis_names} and \code{list_rules}.
+#' These are standardized so that the axis names contained in the latter are 
+#' guaranteed to perform a partition of all axes in \code{axis_names}. The names
+#' of \code{list_rules} are also validated, and updated to align with the 
+#' broadcast rule function names (e.g., \code{recycle} is updated to 
+#' \code{rule_recycle}). If \code{drop_absent_axes} is \code{TRUE}, then 
+#' the returned value for \code{axis_names} may contain a strict subset of the
+#' axes in the original argument.
+#' 
+#' @param axis_names character, vector of unique axis names. 
+#' @param list_rule named list, with names set to valid broadcast rules and 
+#'  values set to character vectors defining the axis groups to which each
+#'  rule will be applied. Axis names cannot be repeated across multiple rules.
+#'  At present, valid rules include 
+#'  \code{"recycle", "match", "broadcast", "product", "identity"}.
+#' @param drop_absent_axes logical(1), if \code{TRUE} then any axes in \code{axis_names}
+#'  but not included in \code{list_rule} will be dropped so that the constructed
+#'  broadcast rule operates only on the remaining subset of axes. If \code{FALSE},
+#'  (default), then a Cartesian product is taken with all unnamed axes.
+#'
+#' @returns list, with names \code{axis_names} and \code{list_rule}.
+#' 
+#' @author Andrew Roberts
+.standardize_list_rule <- function(axis_names, list_rule, drop_absent_axes) {
+ 
+  assert_that(anyDuplicated(axis_names) == 0L,
+              msg="`axis_names` must be unique.")
+  
+  assert_that(is.list(list_rule) && assertthat:::is.named(list_rule),
+              msg="`list_rule` must be a named list.")
+
+  axis_names_in_rules <- do.call(c, list_rule)
+  
+  if(anyDuplicated(axis_names_in_rules) > 0L) {
+    stop("Duplicate axis names found in `list_rules`.")
+  }
+  
+  extra_names <- setdiff(axis_names_in_rules, axis_names)
+  if(length(extra_names) > 0L) {
+    stop("Axis names in `list_rule` not present in `axis_names`: ",
+         paste(extra_names, collapse=", "))
+  } 
+  
+  assert_that(length(axis_names_in_rules) > 0L,
+              msg="`list_rule` cannot be empty; must specify at least one axis.")
+  
+  # Unspecified axes are either dropped, or assigned a Cartesian product
+  # broadcast rule.
+  missing_names <- setdiff(axis_names, axis_names_in_rules)
+  if(length(missing_names) > 0L) {
+    if(drop_absent_axes) {
+      axis_names <- setNames(axis_names_in_rules, NULL)
+    } else {
+      # If only one axis is missing, assign identity rule (same effect as product
+      # rule in this case, but improves clarity).
+      rule_tag_for_missing <- if(length(missing_names) == 1L) "identity" else "product"
+      list_rule <- c(list_rule, setNames(missing_names, rule_tag_for_missing))
+    }
+  }
+  
+  # Set names to broadcast rule function names.
+  rule_tags <- names(list_rule)
+  valid_rule_tags <- c("identity", "product", "recycle", "match", "broadcast")
+  invalid_tags <- setdiff(rule_tags, valid_rule_tags)
+  if(length(invalid_tags) > 0L) {
+    stop("Invalid broadcast rule tags in `list_rule`: ", paste(invalid_tags, collapse=", "))
+  }
+  
+  names(list_rule) <- paste0("rule_", rule_tags)
+
+  invisible(list(axis_names=axis_names, list_rule=list_rule))
 }
 
 

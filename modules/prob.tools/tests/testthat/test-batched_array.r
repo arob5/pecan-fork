@@ -1,4 +1,4 @@
-# prob.tools/tests/testthat/batched_array.r
+# prob.tools/tests/testthat/test-batched_array.r
 #
 # Depends: testthat
 

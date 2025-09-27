@@ -82,25 +82,39 @@ run_model.Settings <- function(settings, model_input, run_id=NULL,
   
   # Read outputs from file.
   run_output_path <- file.path(settings$modeloutdir, run_id)
-  model_output <- PEcAn.utils::read.output(run_id, outdir=run_output_path, 
-                                           variables=output_vars, ...)
+  model_output <- PEcAn.utils::read.output(run_id, outdir=run_output_path, ...)
   attr(model_output, "run_id") <- run_id
   
   return(model_output)
 }
 
 
-run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL, 
-                                        overwrite_runs_file=FALSE, ...) {
+# run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL, 
+#                                         overwrite_runs_file=FALSE, ...) {
+#   
+#   # Read output into list.
+#   model_ens_output <- lapply(run_ids, 
+#                                   function(run_id) PEcAn.utils::read.output(run_id, 
+#                                                                             outdir=output_path(ensemble_input, run_id), 
+#                                                                             variables=variables, ...))
+#   names(model_ens_output) <- run_ids
+#   
+#   return(model_ens_output)
+# }
+
+
+start_pecan_model_run <- function(settings, model_input, run_id=NULL,
+                                  overwrite_runs_file=FALSE) {
   
-  # Read output into list.
-  model_ens_output <- lapply(run_ids, 
-                                  function(run_id) PEcAn.utils::read.output(run_id, 
-                                                                            outdir=output_path(ensemble_input, run_id), 
-                                                                            variables=variables, ...))
-  names(model_ens_output) <- run_ids
+  run_id <- prep_pecan_model_run(settings=settings, 
+                                 model_input=model_input, 
+                                 run_id=run_id, 
+                                 overwrite_runs_file=overwrite_runs_file)
   
-  return(model_ens_output)
+  PEcAn.workflow::start_model_runs(settings, write=FALSE)
+  
+  return(invisible(run_id))
+  
 }
 
 
@@ -115,14 +129,17 @@ run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL,
 #'  and uses the write config function from this package to write configuration
 #'  files to disk.
 prep_pecan_model_run <- function(settings, model_input, run_id=NULL, 
-                                 overwrite_runs_file=FALSE, ...) {
+                                 overwrite_runs_file=FALSE) {
 
-  # If run ID is not provided, randomly generate one.
-  if(is.null(run_id) || is.na(run_id)) run_id <- uuid::UUIDgenerate()
+  .check_pecan_model_input_type(model_input)
+  assert_that(PEcAn.settings::is.Settings(settings))
   
   # Overwrite defaults in `settings` with values specified in `model_input`.
-  settings <- overwrite_default_settings(settings, model_input)
+  settings <- update_pecan_settings(settings, model_input)
   
+  # If run ID is not provided, randomly generate one.
+  if(is.null(run_id) || is.na(run_id)) run_id <- uuid::UUIDgenerate()
+
   # Load model package.
   PEcAn.utils::load.modelpkg(settings$model$type)
   
@@ -132,9 +149,8 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
   
   # Write model config to file.
   model_write_config <- paste0("write.config.", settings$model$type)
-  
-  write_config_args <- list(settings=settings, defaults=settings$pfts, run.id=run_id)
-  write_config_args <- c(write_config_args, pecan_runtime_slots(model_input))
+  config_args <- list(settings=settings, defaults=settings$pfts, run.id=run_id)
+  config_args <- c(config_args, pecan_config_inputs(model_input))
   do.call(model_write_config, args=write_config_args)
   
   # Either append to or overwrite existing "runs.txt" file.
@@ -145,6 +161,19 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
   
   return(invisible(run_id))
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

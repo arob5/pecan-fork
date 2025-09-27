@@ -38,22 +38,198 @@
 # - Forward model method that will be used (.function, .Settings, etc.)
 # - Information on how the input will be broadcast
 
+
+#' Generate a forward model function
+#'
+#' Returns an R function that accepts as an argument a representation of the
+#' values of "free" input slots. Other input slots are fixed. An \code{EnsembleInput}
+#' serves as a template, which both defines the values of the fixed slots, and 
+#' is used to determine the correct format for the argument that will be 
+#' accepted by the returned forward model.
+#'
+#' @details
+#' The \code{EnsembleInputBroadcast} object \code{ens_template} defines the
+#' input slots required by the model \code{model_obj}. The slots specified by
+#' \code{slot_names} are designated as "free", while the remaining slots will
+#' be fixed using the values in \code{ens_template}. The free slots are required
+#' to be array-like. If \code{nm} is one of the specified free slot names, this
+#' means that \code{ens_template$slots[[nm]]} must be array-like. The first 
+#' dimension of this array is interpreted as indexing over different values
+#' within this slots. The remaining dimensions thus define the dimension of a
+#' single value that the slot accepts. The generated forward model is defined
+#' to accept values of this dimension. 
+#' 
+#' The two input modes require different constraints on the inputs:
+#' 1. \code{matrix}: The forward model expects a matrix of shape \code{(n, len)},
+#'  where \code{n} is a variable batch size and \code{len} is the total number
+#'  of scalar elements summed across all free slots. The relevant column subset
+#'  for each slot is extracted and re-shaped to align with the slot dimension.
+#'  The columns are assumed to be concatenated in the order given in 
+#'  \code{free_slot_names}. Because this mode restricts the input as a matrix,
+#'  the batch size is constrained to be the same for all free slots. This may
+#'  be too restrictive in certain settings. In such cases, one can consider 
+#'  re-defining the slots, or opt for \code{list} model.
+#' 2. \code{list}: The forward model expects a list of length equal to 
+#'  \code{length(free_slot_names)}, where element \code{i} is an array with
+#'  dimension \code{(ni, d1, ..., dp)}. \code{ni} is the batch size (allowed
+#'  to vary by slot) while \code{(d1, ..., dp)} is the dimension of a value
+#'  in that slot.
+#'  
+#' This method of forward model generation allows for vectorization; the forward
+#' model accepts batches of arbitrary size. One must keep in mind that the 
+#' broadcast rule encoded in \code{ens_template} will not change. This means
+#' that trying to run the forward model with certain sized batches may result
+#' in an error due to incompatibility with the broadcast rule. Each call to the
+#' forward model will result in the generation of a new \code{EnsembleInput}
+#' object, with the free slot values updated and a new \code{idx_mat} matrix
+#' generated.
+#'  
+#' @param model_obj An object for which a \code{run_model} method is defined.
+#' @param ens_template An \code{EnsembleInputBroadcast} object, which is required
+#'  to have its \code{rule} field defined.
+#' @param free_slot_names character, the subset of \code{slot_names(ens_template)}
+#'  that will be used to define the input to the forward model.
+#' @param input_type character, either "matrix" or "list".
+#' @param output_operator function or \code{NULL}. If provided, the function
+#'  is applied to the output of the model; i.e., the forward model return will
+#'  be of the form \code{output_operator(run_model(model_obj, ens_input, ...))}.
+#' @param verbose logical, if \code{TRUE} (default), prints a description of the 
+#'  forward model.
+#'  
+#' @returns function, the forward model.
+#'
+#' @author Andrew Roberts
+#' @export
+gen_forward_model <- function(model_obj, ens_template, free_slot_names, input_type="matrix",
+                              output_operator=NULL, verbose=TRUE) {
+  
+  # Freeze arguments.
+  force(model_obj); force(ens_template); force(free_slot_names); 
+  force(input_type); force(output_operator)
+  
+  slot_base_dims <- .validate_forward_model(model_obj, ens_template, free_slot_names, input_type)
+  param_len <- sum(vapply(slot_base_dims, function(x) prod(x)))
+  
+  if(verbose) .print_forward_model(model_obj, ens_template, free_slot_names,
+                                   slot_base_dims, param_len, input_type, output_operator)
+  
+  function(input_mat, ...) {
+    ens_input <- update_free_slots(default, input_mat, slot_names, input_dim, ncol_per_slot)
+    output <- run_model_ensemble(obj, ens_input, ...)
+    if(!is.null(output_operator)) output_operator(output)
+  }
+  
+}
+
+
+.validate_forward_model <- function(model_obj, ens_template, free_slot_names, input_type) {
+  
+  # Ensure valid input type.
+  valid_input_types <- c("matrix", "list")
+  if(!(input_type %in% valid_input_types)) {
+    stop("`input_type` must be one of: ", paste(valid_input_types, collapse=", "),
+         ". Got ", input_type)
+  }
+  
+  # Validate free slots.
+  .validate_free_slots(default, slot_names, require_rule=TRUE)
+  free_slots <- .wrap_and_validate_array_slots(ens_template$slots[slot_names])
+  
+  # Ensure model run method exists.
+  method_name <- paste0("run_model.", class(obj)[1])
+  if(!(method_name %in% methods("run_model"))) {
+    stop("No run_model() method exists for `model_obj` of class ", class(model_obj)[1])
+  }
+  
+  # Dimension of a single array value for each free slot.
+  slot_base_dims <- lapply(free_slots, function(x) dim(x)[-1])
+  
+  invisible(slot_base_dims)
+}
+
+
+.print_forward_model <- function(model_obj, ens_template, free_slot_names,
+                                 slot_base_dims, param_len, input_type, output_operator) {
+  
+  cat("--- Generating forward model ---\n\n")
+  
+  cat("Forward model signature: function(input, ...)\n")
+  if(input_type == "array") {
+    batch_input_shape <- paste0("(n,", param_len, ")")
+    cat("input type: array\n")
+    cat("input shape: ", batch_input_shape, "\n", sep="")
+  } else {
+    batch_dims <- lapply(slot_base_dims, function(x) .get_vector_string(c("n", x)))
+    str_list_spec <- paste0("list{", paste(batch_dims, collapse=", "), "}")
+    cat("input type: list\n")
+    cat("input shape: ", str_list_spec, "\n", sep="")
+  }
+  
+  cat("Free slots: ")
+  cat(paste(slot_names, collapse=", "), "\n\n")
+  
+  method_name <- paste0("run_model.", class(obj)[1])
+  cat("Run model method:", method_name,"\n\n")
+  
+  cat("Default EnsembleInput:\n")
+  summary(default)
+}
+
+
+.validate_free_slots <- function(ens_template, free_slot_names, require_rule=FALSE) {
+  
+  # General EnsembleBroadcastInput validation. 
+  check_ensemble_input_broadcast_type(ens_template)
+  if(require_rule && is.null(ens_template$rule)) {
+    stop("`ens_template` requires specification of a broadcast rule.")
+  }
+  
+  if(anyDuplicated(free_slot_names) > 0L) {
+    stop("`free_slot_names` contains duplicates.")
+  }
+  
+  invalid_slot_names <- setdiff(free_slot_names, slot_names(ens_template))
+  if(length(invalid_slot_names) > 0L) {
+    stop("Invalid slot names: ", paste(invalid_slot_names, collapse=", "))
+  }
+}
+
+
+.wrap_and_validate_array_slots <- function(array_slots) {
+  
+  if(!all(vapply(array_slots, is_array_like, logical(1)))) {
+    stop("Forward model requires all free slots to be array-like ",
+         "(first dimension is batch dimension)")
+  }
+  
+  lapply(free_slots, wrap_as_multidim_array)
+}
+
+
+
+
+
+
+
+
+
 # Start simple by not vectorizing; just pass one value, which then gets 
 # broadcast out according to the template.
-gen_matrix_fwd_model <- function(obj, default, slot_names, verbose=TRUE) {
+gen_matrix_fixed_dim_fwd_model <- function(obj, default, slot_names, output_operator=NULL, verbose=TRUE) {
 
   # Freeze arguments.
-  force(obj); force(default); force(slot_names)
+  force(obj); force(default); force(slot_names); force(output_operator)
   
-  slot_dims <- .validate_matrix_fwd_model(default, slot_names)
+  slot_dims <- .validate_matrix_fixed_dim_fwd_model(default, slot_names)
   ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
   input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
   
-  if(verbose) print_fwd_model_description(obj, default, slot_names, input_dim)
+  if(verbose) print_fwd_model_info(obj, default, slot_names, input_dim)
 
   function(input_mat, ...) {
     ens_input <- update_free_slots(default, input_mat, slot_names, input_dim, ncol_per_slot)
-    run_model_ensemble(obj, ens_input, ...)
+    output <- run_model_ensemble(obj, ens_input, ...)
+    if(!is.null(output_operator)) output_operator(output)
   }
 }
 
@@ -65,8 +241,8 @@ update_free_slots <- function(ens_input, input_mat, free_slot_names,
   assert_that(is.matrix(input_mat))
   
   if(!all(dim(input_mat) == input_dim)) {
-    stop("Forward model input has dimension ", .get_dims_string(dim(input_mat)),
-         ". Expected dimension ", .get_dims_string(input_dim))
+    stop("Forward model input has dimension ", .get_vector_string(dim(input_mat)),
+         ". Expected dimension ", .get_vector_string(input_dim))
   }
   
   # Allocate values to each slot. Order of free_slot_names matters here.
@@ -82,17 +258,9 @@ update_free_slots <- function(ens_input, input_mat, free_slot_names,
 }
 
 
-.validate_matrix_fwd_model <- function(default, slot_names) {
-  check_ensemble_input_broadcast_type(default)
+.validate_matrix_fixed_dim_fwd_model <- function(default, slot_names) {
   
-  if(anyDuplicated(slot_names) > 0L) {
-    stop("`slot_names` contains duplicates.")
-  }
-  
-  invalid_slot_names <- setdiff(slot_names, slot_names(default))
-  if(length(invalid_slot_names) > 0L) {
-    stop("Invalid slot names: ", paste(invalid_slot_names, ", "))
-  }
+  validate_broadcast_fwd_model_slots(default, slot_names)
 
   # Ensure all selected slots are flattened batch arrays (matrix). Slot values
   # are stored in the rows of the matrix.
@@ -115,12 +283,12 @@ update_free_slots <- function(ens_input, input_mat, free_slot_names,
 }
 
 
-print_fwd_model_description <- function(obj, default, slot_names, input_dim) {
+print_fwd_model_info <- function(obj, default, slot_names, input_dim) {
   
   cat("--- Generating forward model with matrix input ---\n\n")
   
   cat("Forward model signature: function(input_mat, ...)\n")
-  cat("input_mat shape: ", .get_dims_string(input_dim), "\n", sep="")
+  cat("input_mat shape: ", .get_vector_string(input_dim), "\n", sep="")
   cat("Free slots: ")
   cat(paste(slot_names, collapse=", "), "\n\n")
   
@@ -132,7 +300,7 @@ print_fwd_model_description <- function(obj, default, slot_names, input_dim) {
 }
 
 
-.get_dims_string <- function(dims) {
+.get_vector_string <- function(dims) {
   paste0("(", paste(dims, collapse=","), ")")
 }
 
@@ -145,10 +313,21 @@ print_fwd_model_description <- function(obj, default, slot_names, input_dim) {
 
 
 
-#' @export
-is_forward_model_run <- function(x) {
-  inherits(x, "forward_model_run")
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #' Forward model factory with multiple vectorized free slots
