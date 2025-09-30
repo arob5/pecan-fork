@@ -13,6 +13,8 @@ SETTINGS_TEMPLATE <- list(outdir = character(1),
                             inputs = list()
                           ))
 
+PECAN_BRANCH_KEY <- "pecan"
+
 
 #' PEcAn ModelInput Constructor
 #' 
@@ -34,31 +36,56 @@ SETTINGS_TEMPLATE <- list(outdir = character(1),
 #'
 #'
 PecanModelInput <- function(x, pecan_settings=NULL, ...) {
-  x <- .new_pecan_model_input(x, pecan_settings)
-  validate_pecan_model_input(x)
+  x <- .new_pecan_model_input(x, pecan_settings, ...)
+  # validate_pecan_model_input(x)
+  
+  return(x)
+}
+
+
+.new_pecan_model_input <- function(x, pecan_settings, ...) {
+  x <- as_model_input(x, ...)
+  
+  if(!is.null(pecan_settings)) {
+    pecan_settings <- as_model_input(pecan_settings)
+    x <- .assign_value_at_path(x, PECAN_BRANCH_KEY, pecan_settings, allow_overwrite=FALSE)
+  }
   
   return(x)
 }
 
 
 is_pecan_model_input <- function(x) {
-  inherits(x, "PecanModelInput")
+  is_model_input(x) && is_model_input(x[[PECAN_BRANCH_KEY]])
 }
 
 
 .check_pecan_model_input_type <- function(x) {
   if(!is_pecan_model_input(x)) {
-    stop("Object is not a PecanModelInput.")
+    stop("Object is not a PEcAn model input.")
   }
 }
 
-pecan_config_inputs <- function(x) {
+#' Validate a PEcAn ModelInput object
+#'
+#' Currently an alias for \code{\link{.check_pecan_model_input_type}}.
+#' Included so that additional validation can easily be included in the future.
+#'
+#' @export
+validate_pecan_model_input <- function(x) {
   .check_pecan_model_input_type(x)
-  input_slots(x$pecan)
 }
 
 
+pecan_subtree <- function(x) {
+  .check_pecan_model_input_type(x)
+  x[[PECAN_BRANCH_KEY]]
+}
 
+
+pecan_config_inputs <- function(x) {
+  input_slots(pecan_subtree(x))
+}
 
 
 #' Recursively update a nested settings list with new values
@@ -93,21 +120,15 @@ pecan_config_inputs <- function(x) {
 #' #  $ f: num 7
 update_pecan_settings <- function(settings, model_input) {
   
-  .check_pecan_model_input_type(model_input)
+  pecan_tree <- pecan_subtree(model_input)
   
-  for(nm in names(model_input)) {
-    recurse <- nm %in% names(settings) && 
-               is_pure_list(settings[[nm]]) && 
-               !is_model_input_leaf(settings[[nm]])
-    
-    if(recurse) {
-      settings[[nm]] <- update_settings(settings[[nm]], new_settings[[nm]])
-    } else {
-      settings[[nm]] <- model_input[[nm]]
-    }
+  for(key in input_keys(pecan_tree)) {
+    val <- .resolve_model_input_path(pecan_tree, key, error_if_missing=FALSE)
+    settings <-.assign_value_at_path(settings, key, val, allow_overwrite=TRUE)
   }
   
   settings
+  # PEcAn.settings::as.Settings(settings)
 }
 
 

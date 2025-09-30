@@ -2,7 +2,7 @@
 
 
 # Constants: prefixes used to mark values as model input slots or metadata.
-SLOT_PREFIX <- "slot_"
+INPUT_PREFIX <- "input_"
 METADATA_PREFIX <- "metadata_"
 
 #' Base class for ensemble model input
@@ -89,15 +89,15 @@ check_ensemble_input_type <- function(x) {
 #'
 #' @return A character vector of slot names if \code{unique_only = TRUE},
 #'   otherwise a list of character vectors (per run/input).
-#' @seealso \code{\link{slot_names.ModelInput}}
+#' @seealso \code{\link{input_keys.ModelInput}}
 #'   
 #' @author Andrew Roberts
 #' @export
-slot_names.EnsembleInput <- function(x, unique_only=TRUE, ...) {
-  slot_names_per_run <- lapply(as_ensemble_input_list(x)$inputs, slot_names)
+input_keys.EnsembleInput <- function(x, unique_only=TRUE, ...) {
+  input_keys_per_run <- lapply(as_ensemble_input_list(x)$inputs, input_keys)
   
-  if(unique_only) unique(unlist(slot_names_per_run, use.names=FALSE)) 
-  else slot_names_per_run
+  if(unique_only) unique(unlist(input_keys_per_run, use.names=FALSE)) 
+  else input_keys_per_run
 }
 
 
@@ -138,7 +138,7 @@ run_ids.default <- function(x, ...) {
 #' the total number of unique slots). This also corresponds to the number of
 #' "slot columns" in an \code{\link{EnsembleInputTable}}.
 #' However, note that \code{EnsembleInputTable} will always have more columns
-#' than \code{n_slots(x)} due to the presence of the \code{run_id} column and
+#' than \code{n_inputs(x)} due to the presence of the \code{run_id} column and
 #' possibly additional metadata columns.
 #'
 #' @param x An \code{EnsembleInput} object.
@@ -148,8 +148,8 @@ run_ids.default <- function(x, ...) {
 #' 
 #' @author Andrew Roberts
 #' @export
-n_slots.EnsembleInput <- function(x, ...) {
-  length(slot_names(x))
+n_inputs.EnsembleInput <- function(x, ...) {
+  length(input_keys(x))
 }
 
 
@@ -179,17 +179,17 @@ n_runs <- function(x) {
 #' contained within an \code{EnsembleInput}. This corresponds to the row and
 #' column dimensions when the ensemble input is stored in a tabular format.
 #' However, note that \code{EnsembleInputTable} will always have more columns
-#' than \code{n_slots(x)} due to the presence of the \code{run_id} column and
+#' than \code{n_inputs(x)} due to the presence of the \code{run_id} column and
 #' possibly additional metadata columns.
 #'
 #' @param x An \code{EnsembleInput} object.
 #' @param ... Not used
-#' @return Named integer vector of length 2: c(n_runs = n_runs(x), n_slots = n_slots(x)).
+#' @return Named integer vector of length 2: c(n_runs = n_runs(x), n_inputs = n_inputs(x)).
 #'
 #' @author Andrew Roberts
 #' @export
 dim.EnsembleInput <- function(x, ...) {
-  c(n_runs=n_runs(x), n_slots=n_slots(x))
+  c(n_runs=n_runs(x), n_inputs=n_inputs(x))
 }
 
 
@@ -283,9 +283,9 @@ concatenate_ensemble_inputs <- function(..., output_class="EnsembleInputList") {
 summary.EnsembleInput <- function(x, ...) {
   cat("<", class(x)[1], ">\n", sep="")
   cat(" Number of runs:", n_runs(x), "\n")
-  cat(" Number of slots:", n_slots(x), "\n")
+  cat(" Number of slots:", n_inputs(x), "\n")
   
-  slot_nm <- slot_names(x)
+  slot_nm <- input_keys(x)
   if(length(slot_nm) == 0L) {
     cat("  (no slots)\n")
   } else {

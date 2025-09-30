@@ -150,9 +150,9 @@ is_tagged_leaf <- function(x) {
 #' of the list must be unique.
 #' 
 #' 
-ModelInput <- function(x, untagged_is_slot=TRUE) {
+ModelInput <- function(x, untagged_is_input=TRUE) {
   assertthat::assert_that(is_pure_list(x), msg="ModelInput constructor expects a list.")
-  x <- .validate_and_wrap(x, path=character(), untagged_is_slot)
+  x <- .validate_and_wrap_model_input(x, path=character(), untagged_is_input)
   
   structure(list(.data=x), class="ModelInput")
 }
@@ -170,118 +170,113 @@ is_model_input <- function(x) {
 }
 
 
-#' Throw error if object is not \code{ModelInput}
-#' 
-#' @param x An object
-#' @returns Invisibly returns \code{TRUE} if \code{x} is an \code{ModelInput}.
-#'  Otherwise throws an error.
-#' 
-#' @seealso \code{\link{ModelInput}}
-#' @author Andrew Roberts
-#' @export
-check_model_input_type <- function(x) {
-  if (!is_model_input(x)) stop("Object is not a ModelInput.")
-  
-  invisible(TRUE)
-}
-
-
-#' Validate a Nested List and Identify Leaves
-#'
-#' Recursive validator to determine whether a nested list can be wrapped as a
-#' \code{ModelInput}. Any leaves that are not already tagged as an \code{InputSlot}
-#' or \code{MetadataSlot} will be wrapped. If \code{untagged_is_slot = TRUE} 
-#' they will be wrapped as input slots; else metadata slots.
-#' 
-#' @author Andrew Roberts
-#' @export
-.validate_and_wrap <- function(x, path, untagged_is_slot) {
-
-  if(is_model_input_leaf(x)) {
-    if(is_input_slot(x) || is_metadata_slot(x)) return(x)
-    
-    # Object is not a list so is treated as a leaf. Assigned either as an
-    # input slot or metadata slot.
-    if(untagged_is_slot) return(InputSlot(x))
-    else return(MetadataSlot(x))
-  }
-  
-  # Ensure branch has unique names
-  if(!is_pure_list(x) || !has_unique_names(x)) {
-    stop(sprintf("All list elements must have unique names at level '%s'.",
-                 .node_path_to_key(path)))
-  }
-
-  # Recurse on sub-tree
-  out <- list()
-  for(nm in names(x)) {
-    out[[nm]] <- .validate_and_wrap(x[[nm]], c(path, nm), untagged_is_slot)
-  }
-  
-  return(out)
-}
-
-
-#' Traverse Tree and Apply Function to Leaves
-#'
-#' Recursive tree traversal from left-to-right, depth first. The function
-#' \code{f} is applied to each node.
-#' 
-#' @param x A ModelInput object
-#' @param f A function with signature \code{f(node, path, ...)}.
-#' @param ... Additional arguments passed to \code{f}.
-#'
-#' @returns list, of length equal to the number of leaves in the tree. The
-#'  names of the list are set to the key paths of the form \code{a/b/c}. The values
-#'  of the list are the return value of \code{f} applied to each leaf.
+#' Construct a \code{ModelInput} from a nested list.
 #'  
-#' @author Andrew Roberts
+#' Leaves existing \code{ModelInput} objects unchanged.
+#'
 #' @export
-traverse_leaves <- function(x, f, ...) {
-  check_model_input_type(x)
-  out <- list()
-  
-  recurse <- function(node, path=character()) {
-    if(is_model_input_leaf(node)) {
-      key <- .node_path_to_key(path)
-      out[[key]] <<- f(node, path, ...)
-    } else if(is_model_input_branch(node)) {
-      for(nm in names(node)) {
-        recurse(node[[nm]], c(path, nm))
-      }
-    } else {
-      .raise_input_node_type_error(path=path)
-    }
-  }
-  
-  recurse(x$.data, path=character())
-  out
+as_model_input <- function(x, untagged_is_input=TRUE) {
+  if(is_model_input(x)) x
+  else ModelInput(x, untagged_is_input)
 }
 
 
-#' Return flat list of leaves in ModelInput tree
+as_list <- function(x, ...) {
+  UseMethod("as_list")
+}
+
+
+as_list.default <- function(x, ...) {
+  raise_default_method_error(x, "as_list")
+}
+
+
+as_list.ModelInput <- function(x, drop_slot_wrappers=FALSE, flatten=FALSE) {
+  
+  if(drop_slot_wrappers) f <- function(x, ...) x$value
+  else f <- function(x, ...) x
+  
+  apply_to_leaves(x, f, flatten)
+}
+
+
+#' Apply function to leaves of ModelInput tree
 #'
-#' @param x a ModelInput object
+#' @details
+#' Traverses leaves in left-to-right, depth first order. A function with 
+#' signature \code{f(node, node_path, ...)} is applied to each leaf. The values
+#' returned from these calls can either be returned in a flattened list format,
+#' or maintain the nested tree format of the input.
+#' 
+#' @param x A \code{ModelInput} object
+#' @param f A function with signature \code{f(node, node_path, ...)} that is
+#'  applied to each leaf. The \code{node_path} is in the vector format
+#'  (e.g., \code{"a", "b", "c"}).
+#' @param flatten logical(1), if \code{TRUE} returns flattened list. Otherwise
+#'  returns nested list.
+#' @param drop_null logical(1), if \code{TRUE} drops \code{NULL} values. Otherwise,
+#'  they are maintained as elements of the returned list.
+#' @param ... additional arguments passed to \code{f}.
+#' 
+#' @returns list, either nested/tree-like or flat. In either case, \code{drop_null}
+#'  will determine whether \code{NULL} values returned by \node{f} are dropped 
+#'  entirely from the list, or if \code{NULL} elements are retained in the list.
+#'  If all values are \code{NULL} then an empty list \code{list()} is returned 
+#'  in either case.
+#'  
+#' 1. \code{flatten = FALSE}: Returns a nested list that echoes the structure
+#'  of the \code{ModelInput} tree. If \code{drop_null = FALSE} then the tree 
+#'  structure is guaranteed to actually follow the structure of \code{x}.
+#'  Otherwise, the two can deviate due to dropping of \code{NULL} elements.
+#' 2. \code{flatten = TRUE}: Returns a flat list, with names set to the string
+#'  key paths of each node. The length of the list is equal to the number of
+#'  leaves in \code{x} if \code{drop_null = FALSE}. Otherwise can contain fewer
+#'  elements due to dropping of \code{NULL} values.
+#' 
+#' @author Andrew Roberts
+#' @export
+apply_to_leaves <- function(x, f, flatten=FALSE, drop_null=FALSE, ...) {
+  .check_model_input_type(x)
+  .apply_to_leaves(x$.data, f, flatten, drop_null, ...)
+}
+
+
+#' Extract input slots from a ModelInput
+#' 
+#' Returns the input slots (a named list) within a \code{ModelInput} object.
 #'
-#' @returns Flat (non-nested) list of leaves in a \code{ModelInput} tree,
-#' with names set to the respective key paths. This function retains the
-#' \code{InputSlot} and \code{MetadataSlot} labels on the leaf objects.
-#' See the \code{\link{input_slots}} and \code{\link{metadata_slots}} methods
-#' to return the raw leaf values.
+#' @param x A \code{ModelInput} object.
+#' @returns List of input slot leaves containing the raw values of the nodes.
 #'
 #' @author Andrew Roberts
 #' @export
-flatten_model_input <- function(x) {
+input_slots <- function(x) {
   
-  check_model_input_type(x)
-  traverse_leaves(x, function(x, ...) x)
+  f <- function(x, ...) if(is_input_slot(x)) x$value else NULL
+  apply_to_leaves(x, f, flatten=TRUE, drop_null=TRUE)
+}
+
+
+#' Extract metadata slots from a ModelInput
+#' 
+#' Returns the metadata slots (a named list) within a \code{ModelInput} object.
+#'
+#' @param x A \code{ModelInput} object.
+#' @returns List of metadata slot leaves containing the raw values of the nodes.
+#'
+#' @author Andrew Roberts
+#' @export
+metadata_slots <- function(x) {
+  
+  f <- function(x, ...) if(is_metadata_slot(x)) x$value else NULL
+  apply_to_leaves(x, f, flatten=TRUE, drop_null=TRUE)
 }
 
 
 #' Construct ModelInput tree from flat list
 #'
 #' @details
-#' Almost acts as an inverse to the methods \code{\link{input_slots}} and
+#' Acts as a quasi-inverse to the methods \code{\link{input_slots}} and
 #' \code{\link{metadata_slots}}. Feeding the returned values of these methods
 #' to this function is guaranteed to construct a tree with the same leaves,
 #' where the input slot leaves are in the same order, and the metadata leaves
@@ -305,7 +300,7 @@ unflatten_model_input <- function(slots, metadata=NULL) {
   for(nm in names(slots)) {
     path <- .node_key_to_path(nm)
     val <- as_input_slot(slots[[nm]])
-    tree <- .assign_path(tree, path, val)
+    tree <- .assign_value_at_path(tree, path, val, allow_overwrite=FALSE)
   }
   
   # Insert metadata
@@ -313,7 +308,7 @@ unflatten_model_input <- function(slots, metadata=NULL) {
     for(nm in names(metadata)) {
       path <- .node_key_to_path(nm)
       val <- as_metadata_slot(metadata[[nm]])
-      tree <- .assign_path(tree, path, val)
+      tree <- .assign_value_at_path(tree, path, val, allow_overwrite=FALSE)
     }
   }
 
@@ -321,101 +316,14 @@ unflatten_model_input <- function(slots, metadata=NULL) {
 }
 
 
-#' Extract input slots from a ModelInput
-#' 
-#' Returns the input slots (a named list) within a \code{ModelInput} object.
-#' This is an alias for \code{flatten_input_slots(x, return_raw_values=TRUE)}.
-#'
-#' @param x A \code{ModelInput} object.
-#' @returns List of values from the input slot leaves. Names are set to key paths.
-#'
-#' @author Andrew Roberts
-#' @export
-input_slots <- function(x) {
-  flatten_input_slots(x, return_raw_values=TRUE)
-}
-
-
-#' Extract metadata slots from a ModelInput
-#' 
-#' Returns the metadata slots (a named list) within a \code{ModelInput} object.
-#' This is an alias for \code{flatten_metadata_slots(x, return_raw_values=TRUE)}.
-#'
-#' @param x A \code{ModelInput} object.
-#' @returns List of values from the metadata slot leaves. Names are set to key paths.
-#'
-#' @author Andrew Roberts
-#' @export
-metadata_slots <- function(x) {
-  flatten_metadata_slots(x, return_raw_values=TRUE)
-}
-
-
-#' Extract input slots from a ModelInput
-#' 
-#' Returns the input slots (a named list) within a \code{ModelInput} object.
-#' Optionally returns the raw node values, or the \code{InputSlot}-wrapped
-#' objects.
-#'
-#' @param x A \code{ModelInput} object.
-#' @returns List of input slot leaves. If \code{return_raw_values=TRUE} these 
-#'  will be the raw values (i.e., the \code{InputSlot} class is dropped).
-#'  Otherwise, the \code{InputSlot} class is maintained.
-#'
-#' @author Andrew Roberts
-#' @export
-flatten_input_slots <- function(x, return_raw_values=TRUE) {
-  
-  check_model_input_type(x)
-  
-  return_input_slot <- function(x, ...) {
-    if(is_input_slot(x)) {
-       if(return_raw_values) x$value else x
-    } else {
-      NULL
-    }
-  }
-  
-  out <- traverse_leaves(x, return_input_slot)
-  Filter(Negate(is.null), out)
-}
-
-
-#' Extract metadata slots from a ModelInput
-#' 
-#' Returns the metadata slots (a named list) within a \code{ModelInput} object.
-#' Optionally returns the raw node values, or the \code{MetadataSlot}-wrapped
-#' objects.
-#'
-#' @param x A \code{ModelInput} object.
-#' @returns List of metadata slot leaves. If \code{return_raw_values=TRUE} these 
-#'  will be the raw values (i.e., the \code{MetadataSlot} class is dropped).
-#'  Otherwise, the \code{MetadataSlot} class is maintained.
-#'
-#' @author Andrew Roberts
-#' @export
-flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
-  
-  check_model_input_type(x)
-  
-  return_metadata_slot <- function(x, ...) {
-    if(is_metadata_slot(x)) {
-      if(return_raw_values) x$value else x
-    } else {
-      NULL
-    }
-  }
-  
-  out <- traverse_leaves(x, return_metadata_slot)
-  Filter(Negate(is.null), out)
-}
-
-
 #' Extract ModelInput nodes using bracket indexing
 #' 
 #' @details
-#' Following R convention, \code{`[[`} will throw an error if the key path
-#' does not exist, while \code{`$`} will instead return \code{NULL}.
+#' Return \code{NULL} if a key path does not exist in the tree, which is 
+#' consistent with the idea that \code{NULL} represents the absence of a
+#' leaf/branch in a tree. For single-item paths (e.g., \code{"a"}), this 
+#' behaves like the typical R list selection operator (which selects a value
+#' at the top layer without recursing into the nested list).
 #' 
 #' @param x A ModelInput object
 #' @param i character, either a string key path of the form \code{a/b/c} or
@@ -427,7 +335,7 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
 #' sub-tree or the leaf value. In the former case, the sub-tree retains the
 #' \code{ModelInput} class. In the latter case, the actual value of the node
 #' is returned (i.e., the \code{InputSlot}/\code{MetadataSlot} class attribute is
-#' stripped). Throws error if no node exists at the key path.
+#' stripped).
 #' 
 #' @author Andrew Roberts
 #' @export
@@ -436,7 +344,7 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
   # Allow access to internal data.
   if(identical(i, ".data")) return(unclass(x)[[i]])
   
-  node <- .resolve_model_input_path(x, i, error_if_missing=TRUE)
+  node <- .resolve_model_input_path(x$.data, i, error_if_missing=FALSE)
 
   if(is_model_input_leaf(node)) {
     return(node$value)
@@ -448,8 +356,7 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
 
 #' Extract ModelInput nodes using \code{`$`} indexing
 #'
-#' Identical to \code{`[[.ModelInput`}, except that \code{NULL} is returned
-#' when no node is found at the key path.
+#' Identical to \code{`[[.ModelInput`}.
 #' 
 #' @author Andrew Roberts
 #' @export
@@ -458,8 +365,7 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
   # Allow access to internal data.
   if(name == ".data") return(unclass(x)$.data)
   
-  # Same as x[[name]], but with NULL for non-existent keys
-  node <- .resolve_model_input_path(x, name, error_if_missing=FALSE)
+  node <- .resolve_model_input_path(x$.data, name, error_if_missing=FALSE)
   if(is.null(node)) return(NULL)
   
   if(is_model_input_leaf(node)) {
@@ -470,65 +376,52 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
 }
 
 
-#' Extract node from a ModelInput by its key path
+#' Set leaf or branch value in \code{ModelInput}
 #'
-#' Given a key path (in string or vector form), extract the value at that
-#' path. The object is extracted as is, without consideration of its class (i.e.,
-#' the \code{ModelInput} class will be stripped, even if the object is a valid
-#' branch/sub-tree). If no node is found at the key path, either an error is 
-#' thrown or \code{NULL} is returned, depending on the argument \code{error_if_missing}.
+#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE)}.
+#'
+#' @author Andrew Roberts
+#' @export
+`[[<-.ModelInput` <- function(x, i, value) {
+  set_model_input_value(x, i, value, untagged_is_input=TRUE)
+}
+
+
+#' Set leaf or branch value in \code{ModelInput}
+#'
+#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE)}.
+#'
+#' @author Andrew Roberts
+#' @export
+`$<-.ModelInput` <- function(x, name, value) {
+  set_model_input_value(x, name, value, untagged_is_input=TRUE)
+}
+
+
+#' Set leaf or branch value in \code{ModelInput}
+#'
+#' Set a leaf value or branch at a specified key path in a \code{ModelInput}
+#' tree. Allows for overwriting a leaf with a new leaf, branch with a new
+#' branch, leaf with a new branch, and branch with a new leaf.
 #' 
 #' @param x A \code{ModelInput} object.
-#' @param path character, either a string key path of the form \code{a/b/c} or
-#'  a vector path of the form \code{c("a", "b", "c")}.
-#' @param error_if_missing logical(1), if \code{TRUE} throws an error if no node
-#'  exists at the path; otherwise returns \code{NULL} in this case.
+#' @param key A vector or string key path pointing to a node in the tree.
+#' @param value The value to set at the path.
+#' @param untagged_is_input logical(1), If \code{value} is an untagged leaf, 
+#'  then will be wrapped as a model input slot if \code{untagged_is_input=TRUE};
+#'  otherwise will be wrapped as a metadata slot.
 #'  
-#' @returns The node at the key path. May return \code{NULL}
-#'  if \code{error_if_missing = TRUE} and no node exists at the path.
-#'  
-#' @author Andrew Roberts  
-.resolve_model_input_path <- function(x, path, error_if_missing=TRUE) {
-  check_model_input_type(x)
-  tree <- x$.data
-  
-  # Convert to node path.
-  if(is.character(path) &&  length(path) == 1L) {
-    path <- .node_key_to_path(path)
-  }
-  
-  for(node_name in path) {
-    if(is_model_input_branch(tree) && !is.null(tree[[node_name]])) {
-      tree <- tree[[node_name]]
-    } else {
-      if(error_if_missing) stop(sprintf("Path %s does not exist", .node_path_to_key(path)))
-      else return(NULL)
-    }
-  }
-  
-  return(tree)
-}
-
-
-#' Convert vector key path to string
-#'
-#' Given a node path of the form \code{c("a", "b", "c")}, converts to 
-#' the string \code{"a/b/c"}.
-#'
+#' @returns The updated \code{ModelInput} object.
+#' 
 #' @author Andrew Roberts
-.node_path_to_key <- function(node_path) {
-  paste(node_path, collapse="/")
-}
-
-
-#' Convert string key path to vector
-#'
-#' Given a node key of the form \code{"a/b/c"}, converts to  the vector 
-#' \code{c("a", "b", "c")}. Key should not begin with "/".
-#'
-#' @author Andrew Roberts
-.node_key_to_path <- function(node_key) {
-  strsplit(node_key, split="/", fixed=TRUE)[[1]]
+#' @export
+set_model_input_value <- function(x, key, value, untagged_is_input=TRUE) {
+  .check_model_input_type(x)
+  
+  new_tree <- .assign_value_at_path(x$.data, key, value, allow_overwrite=TRUE)
+  new_tree <- .validate_and_wrap_model_input(new_tree, untagged_is_input=untagged_is_input)
+  
+  structure(list(.data=new_tree), class=class(x))
 }
 
 
@@ -541,8 +434,8 @@ flatten_metadata_slots <- function(x, return_raw_values=TRUE) {
 #' 
 #' @author Andrew Roberts
 #' @export
-leaf_names <- function(x) {
-  check_model_input_type(x)
+leaf_keys <- function(x) {
+  .check_model_input_type(x)
   names(flatten_model_input(x))
 }
 
@@ -556,24 +449,24 @@ leaf_names <- function(x) {
 #' @param ... Further arguments passed to methods.
 #'
 #' @return character vector of input slot names.
-#' @seealso \code{\link{input_names.ModelInput}}, \code{\link{input_names.EnsembleInput}}
+#' @seealso \code{\link{input_keys.ModelInput}}, \code{\link{input_keys.EnsembleInput}}
 #'
 #' @author Andrew Roberts
 #' @export
-input_names <- function(x, ...) {
-  UseMethod("input_names")
+input_keys <- function(x, ...) {
+  UseMethod("input_keys")
 }
 
 
 #' @export
-input_names.default <- function(x, ...) {
-  raise_default_method_error(x, "input_names")
+input_keys.default <- function(x, ...) {
+  raise_default_method_error(x, "input_keys")
 }
 
 
 #' Extract input slot names from a \code{ModelInput}.
 #' @export
-input_names.ModelInput <- function(x) {
+input_keys.ModelInput <- function(x) {
   nm <- names(flatten_input_slots(x))
   
   if(is.null(nm)) character(0)
@@ -590,27 +483,48 @@ input_names.ModelInput <- function(x) {
 #' @param ... Further arguments passed to methods.
 #'
 #' @return character vector of metadata slot names.
-#' @seealso \code{\link{metadata_names.ModelInput}}, \code{\link{metadata_names.EnsembleInput}}
+#' @seealso \code{\link{metadata_keys.ModelInput}}, \code{\link{metadata_keys.EnsembleInput}}
 #'
 #' @author Andrew Roberts
 #' @export
-metadata_names <- function(x, ...) {
-  UseMethod("metadata_names")
+metadata_keys <- function(x, ...) {
+  UseMethod("metadata_keys")
 }
 
 
 #' @export
-metadata_names.default <- function(x, ...) {
-  raise_default_method_error(x, "metadata_names")
+metadata_keys.default <- function(x, ...) {
+  raise_default_method_error(x, "metadata_keys")
 }
 
 
-#' Extract input slot names from a \code{ModelInput}.
+#' Extract keys for metadata slots from a \code{ModelInput}.
 #' @export
-metadata_names.ModelInput <- function(x) {
+metadata_keys.ModelInput <- function(x) {
   nm <- names(flatten_metadata_slots(x))
   if(is.null(nm)) character(0)
   else nm
+}
+
+
+#' Return the names (not full keys) of leaves in ModelInput tree
+#' @export
+leaf_names <- function(x) {
+  basename(leaf_keys(x))
+}
+
+
+#' Return the names (not full keys) of input slot leaves in ModelInput tree
+#' @export
+input_names <- function(x) {
+  basename(input_keys(x))
+}
+
+
+#' Return the names (not full keys) of metadata slot leaves in ModelInput tree
+#' @export
+metadata_names <- function(x) {
+  basename(metadata_keys(x))
 }
 
 
@@ -669,7 +583,7 @@ n_metadata <- function(x) {
 #' @author Andrew Roberts
 #' @export
 tree_depth <- function(x) {
-  check_model_input_type(x)
+  .check_model_input_type(x)
   
   recurse <- function(node, depth) {
     if(is_model_input_leaf(node)) return(depth)
@@ -697,10 +611,10 @@ print.ModelInput <- function(x) {
 #' @export
 summary.ModelInput <- function(x, ...) {
   
-  check_model_input_type(x)
-
-  input_nm <- slot_names(x)
-  meta_nm <- metadata_names(x)
+  .check_model_input_type(x)
+  
+  input_nm <- input_keys(x)
+  meta_nm <- metadata_keys(x)
   num_slots <- length(input_nm)
   num_meta <- length(meta_nm)
   
@@ -730,8 +644,8 @@ summary.ModelInput <- function(x, ...) {
 #'
 #' @export
 print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
-  check_model_input_type(x)
-
+  .check_model_input_type(x)
+  
   recurse <- function(node, name=NULL, prefix="", is_last=TRUE) {
     connector <- if (is_last) "└── " else "├── "
     new_prefix <- if (is_last) paste0(prefix, "    ") else paste0(prefix, "│   ")
@@ -767,36 +681,235 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 }
 
 
+#' Convert between string and vector node key paths
+#'
+#' Converts between string format (e.g., \code{a/b/c}) and vector format
+#' (e.g., \code{c("a", "b", "c")}) for node key paths.
+#' 
+#' @param path character string or vector key path.
+#' @param as_string logical(1), if \code{TRUE} (default), convert to string 
+#'  format. Otherwise convert to vector format.
+#'  
+#' @returns Either string or vector key path format. If the argument is already
+#'  in the desired format, returns as is. Throws error if argument is not character.
+#'
+#' @author Andrew Roberts
+.parse_key_path <- function(path, as_string=TRUE) {
+  
+  if(!is.character(path)) {
+    stop("Key path must be string or character vector.")
+  }
+  
+  already_is_string <- assertthat:::is.string(path)
+  
+  if(as_string) {
+    if(already_is_string) path
+    else .node_path_to_key(path)
+  } else {
+    if(already_is_string) .node_key_to_path(path)
+    else path
+  }
+}
+
+
+#' Convert vector key path to string
+#'
+#' Given a node path of the form \code{c("a", "b", "c")}, converts to 
+#' the string \code{"a/b/c"}.
+#'
+#' @author Andrew Roberts
+.node_path_to_key <- function(node_path) {
+  paste(node_path, collapse="/")
+}
+
+
+#' Convert string key path to vector
+#'
+#' Given a node key of the form \code{"a/b/c"}, converts to  the vector 
+#' \code{c("a", "b", "c")}. Key should not begin with "/".
+#'
+#' @author Andrew Roberts
+.node_key_to_path <- function(node_key) {
+  strsplit(node_key, split="/", fixed=TRUE)[[1]]
+}
+
+
+#' Validate a Nested List and Identify Leaves
+#'
+#' Recursive validator to determine whether a nested list can be wrapped as a
+#' \code{ModelInput}. Any leaves that are not already tagged as an \code{InputSlot}
+#' or \code{MetadataSlot} will be wrapped. If \code{untagged_is_input = TRUE} 
+#' they will be wrapped as input slots; else metadata slots.
+#'
+#' @param x 
+#' @param path character, key path in vector format.
+#' 
+#' @author Andrew Roberts
+#' @export
+.validate_and_wrap_model_input <- function(x, path, untagged_is_input) {
+  
+  .check_arg_is_not_model_input(x)
+  
+  if(is_model_input_leaf(x)) {
+    if(is_input_slot(x) || is_metadata_slot(x)) return(x)
+    
+    # Object is not a list so is treated as a leaf. Assigned either as an
+    # input slot or metadata slot.
+    if(untagged_is_input) return(InputSlot(x))
+    else return(MetadataSlot(x))
+  } else {
+    if(!has_unique_names(x)) {
+      stop(sprintf("All list elements must have unique names at level '%s'.",
+                   .node_path_to_key(path)))
+    }
+  }
+  
+  # Recurse on sub-tree
+  out <- list()
+  for(nm in names(x)) {
+    out[[nm]] <- .validate_and_wrap_model_input(x[[nm]], c(path, nm), untagged_is_input)
+  }
+  
+  return(out)
+}
+
+
+#' Apply function to leaves of nested list
+#'
+#' See \code{\link{apply_to_leaves}}, which is a light wrapper that requires
+#' \code{x} to be a \code{ModelInput}. This function allows \code{x} to be
+#' a generic nested named list.
+#' 
+#' @author Andrew Roberts
+.apply_to_leaves <- function(x, f, flatten=FALSE, drop_null=FALSE, ...) {
+  
+  .check_arg_is_not_model_input(x)
+  
+  # Recursive function
+  recurse <- function(node, path=character()) {
+    if(is_model_input_leaf(node)) {
+      if(flatten) {
+        key <- .node_path_to_key(path)
+        return(setNames(list(f(node, path, ...)), key))
+      } else {
+        return(f(node, path, ...))
+      }
+    } else if(is_model_input_branch(node)) {
+      branch_nodes <- lapply(names(node), function(nm) {
+        recurse(node[[nm]], c(path, nm))
+      })
+      
+      names(branch_nodes) <- names(node)
+      if(flatten) {
+        flat_branch <- Reduce(append, branch_nodes, init=list())
+        if(drop_null) flat_branch <- Filter(Negate(is.null), flat_branch)
+        return(flat_branch)
+      } else {
+        if(drop_null) {
+          branch_nodes <- branch_nodes[!vapply(branch_nodes, is.null, logical(1))]
+          if(length(branch_nodes) == 0L) branch_nodes <- NULL
+        }
+        
+        return(branch_nodes)
+      }
+    } else {
+      .raise_input_node_type_error(path=path)
+    }
+  }
+  
+  out <- recurse(x, path=character())
+  if(length(out) == 0L) list()
+  else out
+}
+
+
+#' Extract node from a nested list by its key path
+#'
+#' Given a key path (in string or vector form), extract the value at that
+#' path. The object is extracted and returned as is. If no node is found at the 
+#' key path, either an error is thrown or \code{NULL} is returned, depending on 
+#' the argument \code{error_if_missing}.
+#' 
+#' @param x A nested named list. Cannot be a \code{ModelInput} object.
+#' @param path character, either a string key path of the form \code{a/b/c} or
+#'  a vector path of the form \code{c("a", "b", "c")}.
+#' @param error_if_missing logical(1), if \code{TRUE} throws an error if no node
+#'  exists at the path; otherwise returns \code{NULL} in this case.
+#'  
+#' @returns The node at the key path. May return \code{NULL}
+#'  if \code{error_if_missing = TRUE} and no node exists at the path.
+#'  
+#' @author Andrew Roberts  
+.resolve_model_input_path <- function(tree, path, error_if_missing=TRUE) {
+  
+  .check_arg_is_not_model_input(tree)
+  
+  # Convert to vector node path.
+  if(is.character(path) &&  length(path) == 1L) {
+    path <- .node_key_to_path(path)
+  }
+  
+  for(node_name in path) {
+    if(is_model_input_branch(tree) && !is.null(tree[[node_name]])) {
+      tree <- tree[[node_name]]
+    } else {
+      if(error_if_missing) stop(sprintf("Path %s does not exist", .node_path_to_key(path)))
+      else return(NULL)
+    }
+  }
+  
+  return(tree)
+}
+
+
 #' Assign value in nested list by key path
 #' 
 #' Helper for \code{ModelInput} constructor.
 #' 
-#' @param tree named list, potentially nested.
+#' @details
+#' This function assigns a value at a specific entry in a nested list.
+#' Leaves and branches are differentiated via the logic in 
+#' \code{\link{is_model_input_leaf}}.
+#' 
+#' @param tree named list, potentially nested. Cannot be a \code{ModelInput}.
 #' @param path character, vector key path to a node in the tree.
 #' @param value R object to assign as the node value at the specified path.
+#' @param allow_overwrite logical(1), if \code{FALSE} (default), throws error
+#'  if non-NULL value already exists at the path. Otherwise, overwrites any
+#'  existing value.
 #' 
 #' @returns The updated nested list with the value assigned at the specified
-#'  path. Throws error if a value is already found at that path.
+#'  path. If \code{allow_overwrite = TRUE} throws error if a value is already 
+#'  found at that path.
 #'
 #' @author Andrew Roberts
-.assign_path <- function(tree, path, value) {
+.assign_value_at_path <- function(tree, path, value, allow_overwrite=FALSE) {
+  
+  .check_arg_is_not_model_input(tree)
+  path <- .parse_key_path(path, as_string=FALSE)
   
   if(length(path) == 1L) { # At terminal node in recursion
-    if(!is.null(tree[[path]])) {
-      stop(sprintf("Conflict: multiple values for key '%s'", 
+    if(!allow_overwrite && !is.null(tree[[path]])) {
+      stop(sprintf("Conflict: value already exists at key '%s'", 
                    .node_path_to_key(path)))
     }
+    
     tree[[path]] <- value
   } else {
     nm <- path[1]
     rest_of_path <- path[-1]
     
     if(is.null(tree[[nm]])) tree[[nm]] <- list()
-    if(!is.list(tree[[nm]])) { # Leaf already exists here
-      stop(sprintf("Conflict: path '%s' tries to overwrite a non-list value",
+    if(!allow_overwrite && is_model_input_leaf(tree[[nm]])) {
+      stop(sprintf("Conflict: path '%s' tries to overwrite an existing leaf",
                    .node_path_to_key(path)))
     }
-    tree[[nm]] <- .assign_path(tree[[nm]], rest_of_path, value)
+    
+    # Turning a leaf into a branch.
+    if(is_model_input_leaf(tree[[nm]])) tree[[nm]] <- list()
+    
+    tree[[nm]] <- .assign_value_at_path(tree[[nm]], rest_of_path, value,
+                                        allow_overwrite=allow_overwrite)
   }
   
   return(tree)
@@ -811,9 +924,31 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 }
 
 
+#' Throw error if object is not \code{ModelInput}
+#' 
+#' @param x An object
+#' @returns Invisibly returns \code{TRUE} if \code{x} is an \code{ModelInput}.
+#'  Otherwise throws an error.
+#' 
+#' @seealso \code{\link{ModelInput}}
+#' @author Andrew Roberts
+#' @export
+.check_model_input_type <- function(x) {
+  if (!is_model_input(x)) stop("Object is not a ModelInput.")
+  
+  invisible(TRUE)
+}
 
 
-
-
+# Primarily for functions that construct ModelInputs from nested lists. These
+# functions are designed to operate on pure lists. Trying to pass ModelInput
+# may result in weird results due to the overloading of `[[` and `$`.
+# Extracts the name of the calling function to use in the error message.
+.check_arg_is_not_model_input <- function(x) {
+  if(is_model_input(x)) {
+    fun_name <- as.character((sys.call(1)[[1]]))
+    stop("Function `", fun_name, "()` does not support ModelInput argument")
+  }
+}
 
 

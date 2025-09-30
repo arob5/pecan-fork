@@ -3,7 +3,7 @@
 # The broadcast format for an `EnsembleInput` is typically the most 
 # efficient data structure, relative to the list and table formats. An
 # `EnsembleInputBroadcast` object is defined by a unique set of values per slot,
-# in addition to a `(n_runs, n_slots)` matrix of indices describing how the 
+# in addition to a `(n_runs, n_inputs)` matrix of indices describing how the 
 # slot values map to particular runs. Instead of explicitly passing this matrix,
 # an `EnsembleInputBroadcast` object can be constructed by passing a 
 # "broadcast rule" function that produces this matrix.
@@ -34,7 +34,7 @@ EnsembleInputBroadcast <- function(slots, list_rule=NULL, fn_rule=NULL, mat_rule
 #' \code{mat_rule}. The former is a named list of input fields/types ("slots").
 #' The names defined the slot names. The values must themselves be lists 
 #' containing a unique set of values for each slot. \code{mat_rule} is an
-#' integer matrix of shape \code{(n_runs, n_slots)}. The \code{(i,j)} element 
+#' integer matrix of shape \code{(n_runs, n_inputs)}. The \code{(i,j)} element 
 #' contains the index of the list \code{slots[[j]]}, which is the value to use 
 #' in the jth slot for the ith run. The row names of this matrix define the 
 #' run IDs for each run. The column names are set to the corresponding slot names.
@@ -43,7 +43,7 @@ EnsembleInputBroadcast <- function(slots, list_rule=NULL, fn_rule=NULL, mat_rule
 #' a "broadcast rule". See the alternative constructor 
 #' \code{\link{EnsembleInput.function}} for more information.
 #'
-#' @param mat_rule An integer matrix of dimension \code{(n_runs, n_slots)}.
+#' @param mat_rule An integer matrix of dimension \code{(n_runs, n_inputs)}.
 #'  The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
 #'  which is the value to use in the jth slot for the ith run. Row names will
 #'  be interpreted as run IDs, with defaults defined if not explicitly provided.
@@ -80,7 +80,7 @@ EnsembleInput.matrix <- function(mat_rule, slots) {
 #' This constructor instead takes a broadcast rule, which is used to construct
 #' \code{mat_rule}. Let \code{lens <- sapply(slots, length)} denote the length 
 #' of each slot dimension. When called like \code{broadcast_rule(lens)}, the 
-#' broadcast rule must return an integer matrix of shape \code{(n_runs, n_slots)}.
+#' broadcast rule must return an integer matrix of shape \code{(n_runs, n_inputs)}.
 #' The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
 #' which is the value to use in the jth slot for the ith run. 
 #' 
@@ -127,7 +127,7 @@ EnsembleInput.function <- function(broadcast_rule, slots) {
 #'  is itself a list, containing a unique set of values for that slot.
 #' @param list_rule list, a list representation of a broadcast rule.
 #' @param fn_rule function, a broadcast rule function. See details for requirements.
-#' @param mat_rule matrix, an integer matrix of dimension \code{(n_runs, n_slots)}.
+#' @param mat_rule matrix, an integer matrix of dimension \code{(n_runs, n_inputs)}.
 #'  The \code{(i,j)} element contains the index of the list \code{slots[[j]]},
 #'  which is the value to use in the jth slot for the ith run.
 #' 
@@ -343,11 +343,11 @@ run_ids.EnsembleInputBroadcast <- function(x, ...) {
 #'
 #' @return A character vector of slot names if \code{unique_only = TRUE},
 #'   otherwise a list of character vectors (per run).
-#' @seealso \code{\link{slot_names}}, \code{\link{slot_names.ModelInput}}
+#' @seealso \code{\link{input_keys}}, \code{\link{input_keys.ModelInput}}
 #'   
 #' @author Andrew Roberts
 #' @export
-slot_names.EnsembleInputBroadcast <- function(x, ...) {
+input_keys.EnsembleInputBroadcast <- function(x, ...) {
   names(x$slots)
 }
 
@@ -443,7 +443,7 @@ get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
 #' @param x An \code{EnsembleInputBroadcast}.
 #'  
 #' @returns character matrix. The \code{(i,j)} entry contains the value
-#'  \code{paste(slot_names(x)[[j]], x$mat_rule[i,j], sep="_")}. Note that this
+#'  \code{paste(input_keys(x)[[j]], x$mat_rule[i,j], sep="_")}. Note that this
 #'  is just a label that provides the index of the value within the slot. This
 #'  is NOT the slot value itself (which may be a structured object, not just
 #'  a string).
@@ -452,7 +452,7 @@ get_run_input.EnsembleInputBroadcast <- function(x, run_id, ...) {
 #' @export
 get_labeled_mat_rule <- function(x) {
   check_ensemble_input_broadcast_type(x)
-  run_table <- visualize_slot_grid(x$mat_rule, slot_names(x))
+  run_table <- visualize_slot_grid(x$mat_rule, input_keys(x))
   rownames(run_table) <- rownames(x$mat_rule)
   
   return(run_table)
@@ -460,11 +460,11 @@ get_labeled_mat_rule <- function(x) {
 
 
 # Default to Cartesian product
-ensemble_broadcast_from_tree <- function(tree, slot_names, slot_groups=NULL,
+ensemble_broadcast_from_tree <- function(tree, keys, slot_groups=NULL,
                                          group_broadcast_rules=NULL) {
   
-  slot_list <- slot_list_from_tree(tree, slot_names)
-  rule <- .determine_tree_broadcast_rule(slot_names, slot_groups, group_broadcast_rules)
+  slot_list <- slot_list_from_tree(tree, keys)
+  rule <- .determine_tree_broadcast_rule(keys, slot_groups, group_broadcast_rules)
   
   EnsembleInput(rule, slot_list)
 }
@@ -480,16 +480,16 @@ ensemble_broadcast_from_tree <- function(tree, slot_names, slot_groups=NULL,
 #'
 #' @param tree A hierarchical \code{list} structure, possibly nested, 
 #' containing slot elements.
-#' @param slot_names A character vector of slot names to extract.
+#' @param keys A character vector of slot keys to extract.
 #'
 #' @return A named \code{list} with one element for each slot in 
-#' \code{slot_names}. Each element is itself a \code{list} of collected values.
+#' \code{input_keys}. Each element is itself a \code{list} of collected values.
 #'
 #' @details
 #' * If a slot is not found anywhere in \code{tree}, it is included in the 
 #'   result as an empty \code{list}, and a warning is issued.  
 #' * The elements of the sub-lists in the output may be any R object.  
-#' * Output guarantees consistent slot ordering (given by \code{slot_names}).  
+#' * Output guarantees consistent slot ordering (given by \code{input_keys}).  
 #' * Slots are identified in the tree by name. An element matching a slot name
 #'   is assumed to be a list of values within that slot. If not a list, assumed
 #'   to be a single value.
@@ -510,15 +510,15 @@ ensemble_broadcast_from_tree <- function(tree, slot_names, slot_groups=NULL,
 #' .slot_list_from_tree(site_settings, c("met", "par", "not_a_slot"))
 #'
 #' @export
-slot_list_from_tree <- function(tree, slot_names) {
+slot_list_from_tree <- function(tree, keys) {
   
-  result <- setNames(vector("list", length(slot_names)), slot_names)
-  found   <- setNames(logical(length(slot_names)), slot_names)
+  result <- setNames(vector("list", length(keys)), keys)
+  found   <- setNames(logical(length(keys)), keys)
   
   recurse <- function(node) {
     if (!is.list(node)) return(NULL)
     for (nm in names(node)) {
-      if (nm %in% slot_names) {
+      if (nm %in% keys) {
         val <- node[[nm]]
         if (!is.list(val)) {
           val <- list(val)
@@ -534,7 +534,7 @@ slot_list_from_tree <- function(tree, slot_names) {
   recurse(tree)
   
   # warn about missing slots
-  for (nm in slot_names) {
+  for (nm in keys) {
     if (!found[[nm]]) {
       warning(sprintf("Slot '%s' not found in tree. Slot will be empty.", nm))
     }
@@ -551,7 +551,7 @@ print.EnsembleInputBroadcast <- function(x, ...) {
 }
 
 
-.determine_tree_broadcast_rule <- function(slot_names, slot_groups, group_broadcast_rules) {
+.determine_tree_broadcast_rule <- function(keys, slot_groups, group_broadcast_rules) {
   
   if(is.null(slot_groups) && is.null(group_broadcast_rules)) {
     rule <- rule_cartesian
@@ -564,7 +564,7 @@ print.EnsembleInputBroadcast <- function(x, ...) {
     rule <- group_broadcast_rules
   } else if(!is.null(slot_groups) && !is.null(group_broadcast_rules)) {
     assert_that(length(slot_groups) == length(group_broadcast_rules))
-    slot_idx_groups <- .slot_group_names_to_idx(slot_groups, slot_names)
+    slot_idx_groups <- .slot_group_names_to_idx(slot_groups, keys)
     rule <- get_composite_rule(groups=slot_idx_groups, rules=group_broadcast_rules)
   } else {
     stop("If `slot_groups` is specified, `group_broadcast_rules` cannot be NULL.")
@@ -574,19 +574,19 @@ print.EnsembleInputBroadcast <- function(x, ...) {
 }
 
 
-.slot_group_names_to_idx <- function(slot_groups, slot_names) {
+.slot_group_names_to_idx <- function(slot_groups, keys) {
   
-  assert_that(is.character(slot_names) && !anyDuplicated(slot_names))
+  assert_that(is.character(keys) && !anyDuplicated(keys))
   assert_that(is.list(slot_groups))
   
   all_names <- Reduce(c, slot_groups)
   assert_that(is.character(all_names))
   
-  if((anyDuplicated(all_names) > 0) || !setequal(all_names, slot_names)) {
-    stop("`slot_groups` must be a (disjoint) partition of `slot_names`.")
+  if((anyDuplicated(all_names) > 0) || !setequal(all_names, keys)) {
+    stop("`slot_groups` must be a (disjoint) partition of `keys`.")
   }
   
-  lapply(slot_groups, function(x) match(x, slot_names))
+  lapply(slot_groups, function(x) match(x, keys))
 }
 
 
@@ -632,11 +632,11 @@ n_vals_in_slot <- function(x) {
 .concat_ensemble_input_broadcasts <- function(x, y) {
   
   # Create new slots lists (union of the slots of x and y).
-  slot_names_x <- slot_names(x)
-  slot_names_y <- slot_names(y)
-  new_slot_names <- union(slot_names_x, slot_names_y)
-  new_slots <- lapply(new_slot_names, function(nm) c(x$slots[[nm]], y$slots[[nm]]))
-  names(new_slots) <- new_slot_names
+  input_keys_x <- input_keys(x)
+  input_keys_y <- input_keys(y)
+  new_input_keys <- union(input_keys_x, input_keys_y)
+  new_slots <- lapply(new_input_keys, function(nm) c(x$slots[[nm]], y$slots[[nm]]))
+  names(new_slots) <- new_input_keys
   
   # Create new index matrix.
   n_runs_x <- n_runs(x)
@@ -645,14 +645,14 @@ n_vals_in_slot <- function(x) {
   new_run_ids <- paste0("run_", seq_len(new_n_runs))
   
   new_mat_rule <- matrix(nrow = new_n_runs,
-                        ncol = length(new_slot_names),
-                        dimnames = list(new_run_ids, new_slot_names))
+                        ncol = length(new_input_keys),
+                        dimnames = list(new_run_ids, new_input_keys))
   
-  for(i in seq_along(new_slot_names)) {
-    nm <- new_slot_names[[i]]
+  for(i in seq_along(new_input_keys)) {
+    nm <- new_input_keys[[i]]
     
-    if(nm %in% slot_names_x) new_mat_rule[1:n_runs_x, nm] <- x$mat_rule[,nm]
-    if(nm %in% slot_names_y) {
+    if(nm %in% input_keys_x) new_mat_rule[1:n_runs_x, nm] <- x$mat_rule[,nm]
+    if(nm %in% input_keys_y) {
       shift <- length(x$slots[[nm]])
       new_mat_rule[(n_runs_x+1L):new_n_runs, nm] <- y$mat_rule[,nm] + shift
     }
