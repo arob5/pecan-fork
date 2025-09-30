@@ -378,23 +378,23 @@ unflatten_model_input <- function(slots, metadata=NULL) {
 
 #' Set leaf or branch value in \code{ModelInput}
 #'
-#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE)}.
+#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE, allow_overwrite=TRUE)}.
 #'
 #' @author Andrew Roberts
 #' @export
 `[[<-.ModelInput` <- function(x, i, value) {
-  set_model_input_value(x, i, value, untagged_is_input=TRUE)
+  set_model_input_value(x, i, value, untagged_is_input=TRUE, allow_overwrite=TRUE)
 }
 
 
 #' Set leaf or branch value in \code{ModelInput}
 #'
-#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE)}.
+#' Alias for \code{set_model_input_value(..., untagged_is_input=TRUE, allow_overwrite=TRUE)}.
 #'
 #' @author Andrew Roberts
 #' @export
 `$<-.ModelInput` <- function(x, name, value) {
-  set_model_input_value(x, name, value, untagged_is_input=TRUE)
+  set_model_input_value(x, name, value, untagged_is_input=TRUE, allow_overwrite=TRUE)
 }
 
 
@@ -415,10 +415,10 @@ unflatten_model_input <- function(slots, metadata=NULL) {
 #' 
 #' @author Andrew Roberts
 #' @export
-set_model_input_value <- function(x, key, value, untagged_is_input=TRUE) {
+set_model_input_value <- function(x, key, value, untagged_is_input=TRUE, allow_overwrite=TRUE) {
   .check_model_input_type(x)
   
-  new_tree <- .assign_value_at_path(x$.data, key, value, allow_overwrite=TRUE)
+  new_tree <- .assign_value_at_path(x$.data, key, value, allow_overwrite=allow_overwrite)
   new_tree <- .validate_and_wrap_model_input(new_tree, untagged_is_input=untagged_is_input)
   
   structure(list(.data=new_tree), class=class(x))

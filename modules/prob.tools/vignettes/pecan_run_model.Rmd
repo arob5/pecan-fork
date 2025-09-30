@@ -1,0 +1,19 @@
+---
+title: "pecan_run_model"
+output: html_document
+---
+
+
+
+
+```{r}
+SETTINGS_TEMPLATE <- list(outdir = character(1),
+                          modeloutdir = character(1),
+                          rundir = character(1),
+                          run = list(
+                            site = list(),
+                            start.date = character(1),
+                            end.date = character(1),
+                            inputs = list()
+                          ))
+```
