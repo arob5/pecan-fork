@@ -180,23 +180,52 @@ as_model_input <- function(x, untagged_is_input=TRUE) {
   else ModelInput(x, untagged_is_input)
 }
 
-
+#' Generic for conversion to list
+#' @export
 as_list <- function(x, ...) {
   UseMethod("as_list")
 }
 
 
+#' @export
 as_list.default <- function(x, ...) {
   raise_default_method_error(x, "as_list")
 }
 
 
+#' Convert \code{ModelInput} to flat or nested list
+#' 
+#' Converts to a pure R list. If \code{flatten = TRUE}, converts to a flat
+#' list of length equal to the number of leaves in the tree. Otherwise,
+#' retains the tree structure as a nested list.
+#' 
+#' @param x A \code{ModelInput}
+#' @param drop_slot_wrappers logical(1), if \code{TRUE} the items in the 
+#'  list will contain the raw leaf values without \code{InputSlot} or
+#'  \code{MetadataSlot} wrappers. Otherwise will retain the wrappers.
+#' @param flatten logical(1), if \code{TRUE} converts to flat list of leaves. 
+#'  Otherwise retains the nested list structure.
+#' 
+#' @author Andrew Roberts
+#' @export
 as_list.ModelInput <- function(x, drop_slot_wrappers=FALSE, flatten=FALSE) {
   
   if(drop_slot_wrappers) f <- function(x, ...) x$value
   else f <- function(x, ...) x
   
   apply_to_leaves(x, f, flatten)
+}
+
+
+#' Return flat list of ModelInput leaves 
+#'
+#' Alias for \code{as_list(x, drop_slot_wrappers, flatten=TRUE)}.
+#'
+#' @author Andrew Roberts
+#' @export
+flatten_model_input <- function(x, drop_slot_wrappers=FALSE) {
+  .check_model_input_type(x)
+  as_list(x, drop_slot_wrappers=drop_slot_wrappers, flatten=TRUE)
 }
 
 
@@ -238,6 +267,22 @@ as_list.ModelInput <- function(x, drop_slot_wrappers=FALSE, flatten=FALSE) {
 apply_to_leaves <- function(x, f, flatten=FALSE, drop_null=FALSE, ...) {
   .check_model_input_type(x)
   .apply_to_leaves(x$.data, f, flatten, drop_null, ...)
+}
+
+
+#' Determine whether ModelInput tree contains any nodes
+#'
+#' If the \code{ModelInput} contains any nodes (including empty branches) then
+#' it is considered non-empty. An empty \code{ModelInput} is thus just an
+#' empty list. 
+#'
+#' @param x A \code{ModelInput}.
+#' 
+#' @author Andrew Roberts
+#' @export
+model_input_is_empty <- function(x) {
+  .check_model_input_type(x)
+  length(x$.data) == 0L
 }
 
 
@@ -284,7 +329,7 @@ metadata_slots <- function(x) {
 #' different, as this function provides no way to specify how the input slot
 #' and metadata leaves should be interleaved when inserting them into the tree.
 #'
-#' @param slots a flat list of the form returned by \code{\link{input_slots}}.
+#' @param inputs a flat list of the form returned by \code{\link{input_slots}}.
 #' @param metadata a flat list of the form returned by \code{\link{metadata_slots}}.
 #'
 #' @returns A \code{ModelInput} object, with leaves set to the elements of
@@ -292,19 +337,19 @@ metadata_slots <- function(x) {
 #'
 #' @author Andrew Roberts
 #' @export
-unflatten_model_input <- function(slots, metadata=NULL) {
+unflatten_model_input <- function(inputs=list(), metadata=list()) {
 
   tree <- list()
   
   # Insert slots
-  for(nm in names(slots)) {
+  for(nm in names(inputs)) {
     path <- .node_key_to_path(nm)
-    val <- as_input_slot(slots[[nm]])
+    val <- as_input_slot(inputs[[nm]])
     tree <- .assign_value_at_path(tree, path, val, allow_overwrite=FALSE)
   }
   
   # Insert metadata
-  if(!is.null(metadata)) {
+  if(length(metadata) > 0L) {
     for(nm in names(metadata)) {
       path <- .node_key_to_path(nm)
       val <- as_metadata_slot(metadata[[nm]])
@@ -406,7 +451,8 @@ unflatten_model_input <- function(slots, metadata=NULL) {
 #' 
 #' @param x A \code{ModelInput} object.
 #' @param key A vector or string key path pointing to a node in the tree.
-#' @param value The value to set at the path.
+#' @param value The value to set at the path. Can be a leaf value, or a branch
+#'  (including a \code{ModelInput} sub-tree).
 #' @param untagged_is_input logical(1), If \code{value} is an untagged leaf, 
 #'  then will be wrapped as a model input slot if \code{untagged_is_input=TRUE};
 #'  otherwise will be wrapped as a metadata slot.
@@ -417,6 +463,7 @@ unflatten_model_input <- function(slots, metadata=NULL) {
 #' @export
 set_model_input_value <- function(x, key, value, untagged_is_input=TRUE, allow_overwrite=TRUE) {
   .check_model_input_type(x)
+  if(is_model_input(value)) value <- value$.data
   
   new_tree <- .assign_value_at_path(x$.data, key, value, allow_overwrite=allow_overwrite)
   new_tree <- .validate_and_wrap_model_input(new_tree, untagged_is_input=untagged_is_input)
@@ -436,7 +483,10 @@ set_model_input_value <- function(x, key, value, untagged_is_input=TRUE, allow_o
 #' @export
 leaf_keys <- function(x) {
   .check_model_input_type(x)
-  names(flatten_model_input(x))
+  nm <- names(flatten_model_input(x))
+  
+  if(is.null(nm)) character(0)
+  else nm
 }
 
 
@@ -467,7 +517,7 @@ input_keys.default <- function(x, ...) {
 #' Extract input slot names from a \code{ModelInput}.
 #' @export
 input_keys.ModelInput <- function(x) {
-  nm <- names(flatten_input_slots(x))
+  nm <- names(input_slots(x))
   
   if(is.null(nm)) character(0)
   else nm
@@ -501,7 +551,8 @@ metadata_keys.default <- function(x, ...) {
 #' Extract keys for metadata slots from a \code{ModelInput}.
 #' @export
 metadata_keys.ModelInput <- function(x) {
-  nm <- names(flatten_metadata_slots(x))
+  nm <- names(metadata_slots(x))
+  
   if(is.null(nm)) character(0)
   else nm
 }
@@ -562,14 +613,14 @@ n_inputs.default <- function(x, ...) {
 #' Number of input slots in a ModelInput
 #' @export
 n_inputs.ModelInput <- function(x) {
-  length(flatten_input_slots(x))
+  length(input_slots(x))
 }
 
 
 #' Number of metadata leaves in a ModelInput tree
 #' @export
 n_metadata <- function(x) {
-  length(flatten_metadata_slots(x))
+  length(metadata_slots(x))
 }
 
 
@@ -645,6 +696,7 @@ summary.ModelInput <- function(x, ...) {
 #' @export
 print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
   .check_model_input_type(x)
+  if(length(x$.data) == 0L) cat("Empty tree\n")
   
   recurse <- function(node, name=NULL, prefix="", is_last=TRUE) {
     connector <- if (is_last) "└── " else "├── "
@@ -758,7 +810,7 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
     if(untagged_is_input) return(InputSlot(x))
     else return(MetadataSlot(x))
   } else {
-    if(!has_unique_names(x)) {
+    if(!has_unique_names(x) && length(x) > 0L) {
       stop(sprintf("All list elements must have unique names at level '%s'.",
                    .node_path_to_key(path)))
     }
@@ -841,14 +893,10 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 #'  
 #' @author Andrew Roberts  
 .resolve_model_input_path <- function(tree, path, error_if_missing=TRUE) {
-  
+
   .check_arg_is_not_model_input(tree)
-  
-  # Convert to vector node path.
-  if(is.character(path) &&  length(path) == 1L) {
-    path <- .node_key_to_path(path)
-  }
-  
+  path <- .parse_key_path(path, as_string=FALSE)
+
   for(node_name in path) {
     if(is_model_input_branch(tree) && !is.null(tree[[node_name]])) {
       tree <- tree[[node_name]]

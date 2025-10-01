@@ -4,7 +4,8 @@
 # Depends: model_input.r
 
 
-PECAN_BRANCH_KEY <- "pecan"
+SETTINGS_BRANCH_KEY <- "settings"
+CONFIG_BRANCH_KEY <- "config"
 
 
 #' PEcAn ModelInput Constructor
@@ -13,13 +14,16 @@ PECAN_BRANCH_KEY <- "pecan"
 #' other model inputs.
 #' 
 #' @details
-#' A PEcAn \code{ModelInput} is simply a \code{ModelInput} tree with a special
-#' branch/sub-tree located at key path \code{PECAN_BRANCH_KEY}. This sub-tree
-#' is intended to store a PEcAn \code{Settings} object (or a subset of the
-#' information in a \code{Settings} object). The names of the nodes in this 
-#' sub-tree should follow those of the PEcAn settings exactly. For example, the 
-#' PEcAn settings stored in \code{settings$run$inputs$met} would be found at the 
-#' \code{ModelInput} key \code{PECAN_BRANCH_KEY/run/inputs/met}.
+#' A PEcAn \code{ModelInput} is simply a \code{ModelInput} tree with the additional
+#' requirement that there be sub-trees located at key paths \code{SETTINGS_BRANCH_KEY}
+#' and \code{CONFIG_BRANCH_KEY}. The former is intended to store a PEcAn 
+#' \code{Settings} object (or a subset of the information in a \code{Settings} 
+#' object). The names of the nodes in this sub-tree should follow those of the 
+#' PEcAn settings exactly. For example, the PEcAn settings stored in 
+#' \code{settings$run$inputs$met} would be found at the 
+#' \code{ModelInput} key \code{SETTINGS_BRANCH_KEY/run/inputs/met}.
+#' 
+#' The config branch is intended to store inputs that are 
 #' 
 #' All input slots not contained
 #' in this branch are unconstrained, but will typically store inputs that 
@@ -29,18 +33,23 @@ PECAN_BRANCH_KEY <- "pecan"
 #' If \code{x} already contains the PEcAn branch, then \code{pecan_settings}
 #' should be \code{NULL}. If it does not contain the branch already, then
 #' \code{pecan_settings} must be provided and will be inserted within \code{x}
-#' at the key path \code{PECAN_BRANCH_KEY}.
+#' at the key path \code{SETTINGS_BRANCH_KEY}.
 #' 
-#' @param x A named list or \code{ModelInput}.
-#' @param pecan_settings A named list, PEcAn \code{Settings} object, or \code{NULL}.
+#' @param config_tree named list, \code{ModelInput}, or \code{Settings} object
+#'  that will be used as the config sub-tree.
+#' @param pecan_settings named list, \code{ModelInput}, or \code{Settings} object
+#'  that will be used as the settings sub-tree.
+#' @param base_tree named list, \code{ModelInput}, or \code{Settings} object. An
+#'  existing tree to which the config and settings sub-trees will be added.
+#'  Defaults ot empty tree.
 #' @param ... Additional arguments passed to \code{.new_pecan_model_input()}.
 #' 
 #' @returns A \code{ModelInput} object.
 #' 
 #' @author Andrew Roberts
 #' @export
-PecanModelInput <- function(x, pecan_settings=NULL, ...) {
-  x <- .new_pecan_model_input(x, pecan_settings, ...)
+PecanModelInput <- function(config_tree=list(), settings_tree=list(), base_tree=list(), ...) {
+  x <- .new_pecan_model_input(base_tree, config_tree, settings_tree, ...)
   validate_pecan_model_input(x)
   
   return(x)
@@ -48,14 +57,15 @@ PecanModelInput <- function(x, pecan_settings=NULL, ...) {
 
 
 #' Low level helper to generate a PEcAn model input object
-.new_pecan_model_input <- function(x, pecan_settings, ...) {
-  x <- as_model_input(x, ...)
+.new_pecan_model_input <- function(base_tree, config_tree, settings_tree, ...) {
   
-  if(!is.null(pecan_settings)) {
-    x <- set_model_input_value(x, PECAN_BRANCH_KEY, pecan_settings, 
-                               untagged_is_input=TRUE, allow_overwrite=FALSE)
-  }
+  x <- as_model_input(base_tree)
   
+  x <- set_model_input_value(x, CONFIG_BRANCH_KEY, config_tree, 
+                             untagged_is_input=TRUE, allow_overwrite=FALSE)
+  x <- set_model_input_value(x, SETTINGS_BRANCH_KEY, settings_tree, 
+                             untagged_is_input=TRUE, allow_overwrite=FALSE)
+
   return(x)
 }
 
@@ -64,7 +74,11 @@ PecanModelInput <- function(x, pecan_settings=NULL, ...) {
 #'
 #' A PEcAn \code{ModelInput} does not formally subclass \code{ModelInput}.
 #' Rather, it is simply a \code{ModelInput} with the additional requirement
-#' that there be a subtree located at key \code{PECAN_BRANCH_KEY}.
+#' that there be subtrees located at key \code{SETTINGS_BRANCH_KEY} and
+#' \code{CONFIG_BRANCH_KEY}. The leaf names in the latter tree are required
+#' to be unique (stronger than the usual requirement of having unique key
+#' paths). This is because these names are interpreted as arguments to 
+#' write config functions.
 #' 
 #' @param x An R object
 #' @returns logical(1), \code{TRUE} if \code{x} is a PEcAn \code{ModelInput}.
@@ -72,7 +86,10 @@ PecanModelInput <- function(x, pecan_settings=NULL, ...) {
 #' @author Andrew Roberts
 #' @export
 is_pecan_model_input <- function(x) {
-  is_model_input(x) && is_model_input(x[[PECAN_BRANCH_KEY]])
+  is_model_input(x) && 
+    is_model_input(x[[SETTINGS_BRANCH_KEY]]) &&
+    is_model_input(x[[CONFIG_BRANCH_KEY]]) &&
+    anyDuplicated(leaf_names(x[[CONFIG_BRANCH_KEY]])) == 0L
 }
 
 
@@ -110,22 +127,76 @@ validate_pecan_model_input <- function(x) {
 #' 
 #' @author Andrew Roberts
 #' @export
-pecan_subtree <- function(x) {
+settings_tree <- function(x) {
   .check_pecan_model_input_type(x)
-  x[[PECAN_BRANCH_KEY]]
+  x[[SETTINGS_BRANCH_KEY]]
 }
 
 
-#' Return input slots from PEcAn sub-tree
+#' Return the PEcAn config sub-tree from a PEcAn \code{ModelInput}
+#'
+#' @param x A PEcAn \code{ModelInput}.
+#' @returns A \code{ModelInput}, the PEcAn config branch from \code{x}.
+#' 
+#' @author Andrew Roberts
+#' @export
+config_tree <- function(x) {
+  .check_pecan_model_input_type(x)
+  x[[CONFIG_BRANCH_KEY]]
+}
+
+
+#' Return input slots from settings sub-tree of a PEcAn ModelInput
 #'
 #' @param x A PEcAn \code{ModelInput}
-#' @returns list, flat list containing input slots from the PEcAn sub-tree.
+#' @returns list, flat list containing input slots from the settings sub-tree.
 #'  Names are set to key paths of the sub-tree (not key paths of \code{x}).
 #'  
 #' @author Andrew Roberts
 #' @export
-pecan_inputs <- function(x) {
-  input_slots(pecan_subtree(x))
+settings_input_slots <- function(x) {
+  input_slots(settings_tree(x))
+}
+
+
+#' Return input slots from config sub-tree in a PEcAn \code{ModelInput}
+#' 
+#' This list is interpreted as a list of named arguments to pass to a write
+#' config function. 
+#'
+#' @param x A PEcAn \code{ModelInput}
+#' @returns list, flat list containing input slots from the config sub-tree.
+#'  Names are set to the input leaf names of this sub-tree (not the key paths).
+#'  
+#' @author Andrew Roberts
+#' @export
+config_args <- function(x) {
+  settings <- config_tree(x)
+  args <- input_slots(settings)
+  names(args) <- input_names(settings)
+  
+  return(args)
+}
+
+
+#' Names of config argument list of a PEcAn \code{ModelInput}
+#'
+#' The leaf names of the config branch are required to be unique.
+#' 
+#' @author Andrew Roberts
+#' @export
+config_arg_names <- function(x) {
+  names(config_args(x))
+}
+
+
+#' Key paths of settings sub-tree of a PEcAn \code{ModelInput}
+#' 
+#' @author Andrew Roberts
+#' @export
+settings_keys <- function(x) {
+  .check_pecan_model_input_type(x)
+  input_keys(settings_tree(x))
 }
 
 
@@ -134,19 +205,20 @@ pecan_inputs <- function(x) {
 #' Settings from the PEcAn sub-tree of a PEcAn \code{ModelInput} are used to
 #' overwrite (or add) values in a PEcAn \code{Settings} object. A common use
 #' case is where the \code{Settings} object contains defaults that should
-#' be overwritted by values in \code{model_input}.
+#' be overwritten by values in \code{model_input}.
 #' 
 #' @details
 #' Values are set by key path. For example, a \code{model_input} value at 
-#' \code{PECAN_BRANCH_KEY/run/inputs/met} will set a value at
+#' \code{SETTINGS_BRANCH_KEY/run/inputs/met} will set a value at
 #' \code{settings$run$inputs$met}. If a key exists only in \code{settings}
 #' it will be untouched. If a key exists in both objects, then the value in 
 #' \code{settings} will be overwritten by the value in \code{model_input}.
 #' If a key only exists in \code{model_input}, it will be added to \code{settings}.
-#' Note that values outside of the PEcAn branch in the \code{model_input}
-#' object will be ignored.
+#' Empty branches in \code{model_input} are ignored; only leaves are considered.
+#' Note that values outside of the settings branch in the \code{model_input}
+#' object will be ignored. 
 #'
-#' @param settings named list or PEcAn \code{Settings} object.
+#' @param settings named list, PEcAn \code{Settings} object, or \code{ModelInput} object.
 #' @param model_input A PEcAn \code{ModelInput}.
 #'
 #' @returns A PEcAn \code{Settings} object containing the updated settings.
@@ -155,11 +227,12 @@ pecan_inputs <- function(x) {
 #' @export
 update_pecan_settings <- function(settings, model_input) {
   
-  pecan_tree <- pecan_subtree(model_input)
+  settings_override <- settings_tree(model_input)
+  if(is_model_input(settings)) settings <- settings$.data
   
-  for(key in input_keys(pecan_tree)) {
-    val <- .resolve_model_input_path(pecan_tree$.data, key, error_if_missing=FALSE)$value
-    settings <-.assign_value_at_path(settings, key, val, allow_overwrite=TRUE)
+  for(key in input_keys(settings_override)) {
+    val <- .resolve_model_input_path(settings_override$.data, key, error_if_missing=FALSE)$value
+    settings <- .assign_value_at_path(settings, key, val, allow_overwrite=TRUE)
   }
   
   PEcAn.settings::as.Settings(settings)

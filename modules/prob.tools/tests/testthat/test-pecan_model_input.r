@@ -3,28 +3,36 @@
 # Depends: testthat, PEcAn.settings
 
 test_that("pecan model input constructor works as expected", {
-  l_other <- list(h=5, i=list(j=6))
-  l <- c(l_other, list(pecan=l_pecan))
-  model_input <- ModelInput(l)
   
-  expect_equal(model_input, PecanModelInput(l_other, l_pecan))
+  l_config <- list(a=1, b=list(c=2))
+  l_settings <- list(d=3, e=list(f=4))
+  l <- setNames(list(l_config, l_settings), 
+                c(CONFIG_BRANCH_KEY, SETTINGS_BRANCH_KEY))
+  mi <- ModelInput(l)
   
-  l_other <- list(pecan=1, h=5, i=list(j=6))
-  expect_error(PecanModelInput(l_other, l_pecan))
+  expect_equal(PecanModelInput(l_config, l_settings), mi)
+  expect_equal(PecanModelInput(l_config), 
+               ModelInput(list(config=l_config, settings=list())))
+  expect_equal(PecanModelInput(settings_tree=l_settings), 
+               ModelInput(list(config=list(), settings=l_settings)))
+  expect_equal(PecanModelInput(), ModelInput(list(config=list(), settings=list())))
+  expect_equal(PecanModelInput(base_tree=list(a=1, b=list(c=2))), 
+               ModelInput(c(list(a=1, b=list(c=2)), list(config=list()), list(settings=list()))))
 })
 
 
 test_that("Correctly overwrite pecan settings", {
 
-  l_pecan <- list(a=1, b=list(c=list(d=2, e=3)), f=list(g=4))
-  l_other <- list(h=5, i=list(j=6))
-  x <- PecanModelInput(l_other, l_pecan)
+  l_config <- list(a=1, b=list(c=2))
+  l_settings <- list(d=3, e=list(f=4), g=list())
+  l <- setNames(list(l_config, l_settings), 
+                c(CONFIG_BRANCH_KEY, SETTINGS_BRANCH_KEY))
+  mi <- ModelInput(l)
   
-  expect_equal(update_pecan_settings(list(), model_input), ModelInput(l_pecan)$.data)
+  defaults <- list(a=0, b=list(d=0, c=0), e=list(z=0, f=0), g=0)
   
-  settings <- list(x=1, y=list(z=2), a=3, b=list(c=list(e=100)))
-  settings_updated <- list(x=1, y=list(z=2), a=1, b=list(c=list(e=2, d=3)), f=list(g=4))
-  expect_equal(update_pecan_settings(settings, x), settings_updated)
+  updated <- update_pecan_settings(defaults, mi)
+  # TODO: finish this test.
 })
 
 

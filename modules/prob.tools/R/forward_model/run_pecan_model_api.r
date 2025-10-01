@@ -89,20 +89,6 @@ run_model.Settings <- function(settings, model_input, run_id=NULL,
 }
 
 
-# run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL, 
-#                                         overwrite_runs_file=FALSE, ...) {
-#   
-#   # Read output into list.
-#   model_ens_output <- lapply(run_ids, 
-#                                   function(run_id) PEcAn.utils::read.output(run_id, 
-#                                                                             outdir=output_path(ensemble_input, run_id), 
-#                                                                             variables=variables, ...))
-#   names(model_ens_output) <- run_ids
-#   
-#   return(model_ens_output)
-# }
-
-
 start_pecan_model_run <- function(settings, model_input, run_id=NULL,
                                   overwrite_runs_file=FALSE) {
   
@@ -132,7 +118,6 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
                                  overwrite_runs_file=FALSE) {
 
   .check_pecan_model_input_type(model_input)
-  assert_that(PEcAn.settings::is.Settings(settings))
   
   # Overwrite defaults in `settings` with values specified in `model_input`.
   settings <- update_pecan_settings(settings, model_input)
@@ -141,17 +126,18 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
   if(is.null(run_id) || is.na(run_id)) run_id <- uuid::UUIDgenerate()
 
   # Load model package.
-  PEcAn.utils::load.modelpkg(settings$model$type)
+  model_type <- settings$model$type
+  PEcAn.utils::load.modelpkg(model_type)
   
   # Create run and output directories.
   dir.create(file.path(settings$rundir, run_id), recursive=TRUE)
   dir.create(file.path(settings$modeloutdir, run_id), recursive=TRUE)
   
   # Write model config to file.
-  model_write_config <- paste0("write.config.", settings$model$type)
+  model_write_config <- paste0("write.config.", model_type)
   config_args <- list(settings=settings, defaults=settings$pfts, run.id=run_id)
-  config_args <- c(config_args, pecan_config_inputs(model_input))
-  do.call(model_write_config, args=write_config_args)
+  config_args <- c(config_args, config_args(model_input))
+  do.call(model_write_config, args=config_args)
   
   # Either append to or overwrite existing "runs.txt" file.
   cat(as.character(run_id),
@@ -163,99 +149,26 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
 }
 
 
+# run_model_ensemble.Settings <- function(settings, model_input, run_id=NULL, 
+#                                         overwrite_runs_file=FALSE, ...) {
+#   
+#   # Read output into list.
+#   model_ens_output <- lapply(run_ids, 
+#                                   function(run_id) PEcAn.utils::read.output(run_id, 
+#                                                                             outdir=output_path(ensemble_input, run_id), 
+#                                                                             variables=variables, ...))
+#   names(model_ens_output) <- run_ids
+#   
+#   return(model_ens_output)
+# }
 
 
 
+#
+# OLD
+#
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#' @title Prepare a model run (write config files)
-#' 
-#' @description
-#' Writes config files to disk for a single model run. At minimum, a model 
-#' run is defined by a \code{run_id} and \code{settings} object. Optionally,
-#' \code{runtime_input}, a \code{\link{RuntimeInput}} object can be provided
-#' to overwrite default settings (e.g., to manually pass in parameters and
-#' initial conditions). Therefore, when \code{settings} and \code{runtime_input}
-#' specify overlapping inputs, the \code{runtime_input} values
-#' take precedence. 
-#' 
-#' @details
-#' This interface is a light wrapper around the model-specific write config
-#' function, which does the bulk of the work. The model is specified within
-#' the \code{settings} object, which is used to load the model package and 
-#' use the correct write config function. At present, the convention for all
-#' of the model API function is to pass \code{...} arguments only to the 
-#' underlying core PEcAn functions (e.g., \code{PEcAn.utils::read.output}),
-#' when relevant. All arguments for the API functions are stated explicitly by name.
-#' 
-#' @param settings A PEcAn  settings list object.
-#' @param runtime_input A \code{RuntimeInput} object containing parameters, 
-#' initial conditions, etc. that will override any existing defaults. Or
-#' \code{NULL} (default).
-#' @param run_id Unique identifier for the model run. If \code{NULL} (default),
-#'  one will be randomly generated.
-#' @param append_run Logical; if \code{FALSE}, overwrites existing 
-#'  \code{runs.txt} file (default). If `TRUE`, appends run ID to the existing file.
-#' @param ... Additonal arguments currently not used.
-#'
-#' @returns Invisibly returns the run ID.
-#' @seealso \code{\link{make_runtime_input}}
-#' 
-#' @examples
-#' \dontrun{
-#'   runtime_input <- make_runtime_input(param = c(param1=0, param2=10))
-#'   run_id <- prep_model_run(runtime_input, settings, run_id="test_run")
-#' }
-#' 
-#' @author Andrew Roberts
-#' @export
-prep_model_run <- function(settings, runtime_input=NULL, run_id=NULL, append_run=TRUE, ...) {
-  
-  # Ensure runtime inputs are in proper format.
-  if(!is.null(runtime_input)) validate_runtime_input(runtime_input)
-  
-  # If run ID is not provided, randomly generate one.
-  if(is.null(run_id) || is.na(run_id)) run_id <- uuid::UUIDgenerate()
-  
-  # Load model package.
-  PEcAn.utils::load.modelpkg(settings$model$type)
-  
-  # Create run and output directories.
-  dir.create(file.path(settings$rundir, run_id), recursive=TRUE)
-  dir.create(file.path(settings$modeloutdir, run_id), recursive=TRUE)
-  
-  # Write model config to file.
-  model_write_config <- paste0("write.config.", settings$model$type)
-  do.call(model_write_config, args=list(defaults=settings$pfts,
-                                        trait.values=list(runtime_input$param), # TODO: temporary: SIPNET requires this to be a list
-                                        IC=runtime_input$ic,
-                                        settings=settings,
-                                        run.id=run_id))
-  
-  # Either append to or overwrite existing "runs.txt" file.
-  cat(as.character(run_id),
-      file=file.path(settings$rundir, "runs.txt"),
-      sep="\n",
-      append=append_run)
-  
-  return(invisible(run_id))
-}
 
 
 #' Prepare an Ensemble of Model Runs
@@ -313,37 +226,6 @@ prep_model_ensemble_run <- function(ensemble_input, append_run=TRUE, ...) {
 }
 
 
-#' Execute a single model run
-#'
-#' Prepares configuration and executes a single model run using PEcAn's 
-#' standardized protocol.
-#'
-#' @param settings A PEcAn \code{settings} object.
-#' @param runtime_input A \code{RuntimeInput} object, or \code{NULL} (default).
-#' @param run_id Character: Run ID (optional).
-#' @param append_run Logical: Append run ID to \code{runs.txt} file (otherwise overwrites file).
-#' @param stop_on_error Logical: Stop if model runs encounter an error (default: \code{TRUE}).
-#' @param ... Additional arguments currently not used.
-#'
-#' @return Invisibly returns the run ID.
-#' @seealso \code{\link{run_model_ensemble}}, \code{\link{prep_model_run}}
-#' @author Andrew Roberts
-#' @export
-run_model <- function(settings, runtime_input=NULL, run_id=NULL, append_run=TRUE, 
-                      stop_on_error=TRUE, ...) {
-
-  run_id <- prep_model_run(runtime_input=runtime_input, 
-                           settings=settings, 
-                           run_id=run_id, 
-                           append_run=append_run)
-  
-  PEcAn.workflow::start_model_runs(settings, stop.on.error=stop_on_error, 
-                                   write=FALSE)
-  
-  return(invisible(run_id))
-}
-
-
 #' Execute an ensemble model run
 #'
 #' Runs an ensemble of models, preparing and starting model runs for each member 
@@ -364,43 +246,6 @@ run_model_ensemble <- function(ensemble_input, append_run=TRUE, stop_on_error=TR
                                    stop.on.error=stop_on_error, write=FALSE)
 
   return(invisible(run_ids))
-}
-
-
-#' Run and Read Output from a Model
-#'
-#' Prepares, runs, and loads the output from a single model run.
-#'
-#' @param settings A PEcAn \code{settings} object.
-#' @param runtime_input A \code{RuntimeInput} object, or \code{NULL} (default).
-#' @param run_id Character: Run ID (optional).
-#' @param append_run Logical: Append run ID to \code{runs.txt}.
-#' @param stop_on_error Logical: Stop if model runs encounter an error.
-#' @param output_vars Character vector of output variable names to read.
-#' @param ... Additional arguments to \code{PEcAn.utils::read.output()}.
-#'
-#' @return Returns model output as read by \code{PEcAn.utils::read.output}.
-#'         An attribute named \code{run_id} is set to the character run ID
-#'         identifying the model run.
-#' @seealso \code{\link{run_model}}, \code{\link{run_model_ensemble_and_read_output}}
-#' @author Andrew Roberts
-#' @export
-run_model_and_read_output <- function(settings, runtime_input=NULL, run_id=NULL, 
-                                      append_run=TRUE, stop_on_error=TRUE, 
-                                      output_vars=NULL, ...) {
-  
-  run_id <- run_model(settings=settings,
-                      runtime_input=runtime_input,
-                      run_id=run_id,
-                      append_run=append_run,
-                      stop_on_error=stop_on_error)
-  
-  run_output_path <- file.path(settings$modeloutdir, run_id)
-  model_output <- PEcAn.utils::read.output(run_id, outdir=run_output_path, 
-                                           variables=output_vars, ...)
-  attr(model_output, "run_id") <- run_id
-  
-  return(model_output)
 }
 
 

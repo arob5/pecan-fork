@@ -13,6 +13,39 @@ test_that("Key path conversion works correctly", {
 })
 
 
+test_that("empty branches are handled correctly", {
+  
+  x <- ModelInput(list())
+  y <- ModelInput(list(a=list(b=list())))
+  
+  expect_true(model_input_is_empty(x))
+  expect_equal(x$.data, list())
+  expect_equal(tree_depth(x), 0L)
+  expect_equal(n_leaves(x), 0L)
+  expect_equal(n_inputs(x), 0L)
+  expect_equal(n_metadata(x), 0L)
+  expect_equal(leaf_keys(x), character(0))
+  expect_equal(input_keys(x), character(0))
+  expect_equal(metadata_keys(x), character(0))
+  expect_equal(leaf_names(x), character(0))
+  expect_equal(input_names(x), character(0))
+  expect_equal(metadata_names(x), character(0))
+  
+  expect_false(model_input_is_empty(y))
+  expect_equal(y$.data, list(a=list(b=list())))
+  expect_equal(tree_depth(y), 2L)
+  expect_equal(n_leaves(y), 0L)
+  expect_equal(n_inputs(y), 0L)
+  expect_equal(n_metadata(y), 0L)
+  expect_equal(leaf_keys(y), character(0))
+  expect_equal(input_keys(y), character(0))
+  expect_equal(metadata_keys(y), character(0))
+  expect_equal(leaf_names(y), character(0))
+  expect_equal(input_names(y), character(0))
+  expect_equal(metadata_names(y), character(0))
+})
+
+
 test_that("leaf apply function works correctly", {
   l <- list(a=1, b=list(c=list(d=2, e=3, f=list(g=4))), h=list(i=5))
   l_flat <- list(a=1, `b/c/d`=2, `b/c/e`=3, `b/c/f/g`=4, `h/i`=5)
@@ -43,6 +76,22 @@ test_that("leaf apply function works correctly", {
   
   expect_equal(apply_to_leaves(x, function(x, ...) NULL, drop_null=TRUE, flatten=TRUE), list())
   expect_equal(apply_to_leaves(x, function(x, ...) NULL, drop_null=TRUE, flatten=FALSE), list())
+  
+  # Behavior when there are empty branches
+  y <- ModelInput(list())
+  l_empty <- list(a=list(b=list()))
+  z <- ModelInput(l_empty)
+  
+  id <- function(x, ...) x
+  expect_equal(apply_to_leaves(y, id, flatten=FALSE, drop_null=FALSE), list())
+  expect_equal(apply_to_leaves(y, id, flatten=TRUE, drop_null=FALSE), list())
+  expect_equal(apply_to_leaves(y, id, flatten=FALSE, drop_null=TRUE), list())
+  expect_equal(apply_to_leaves(y, id, flatten=TRUE, drop_null=TRUE), list())
+  
+  expect_equal(apply_to_leaves(z, id, flatten=FALSE, drop_null=FALSE), l_empty)
+  expect_equal(apply_to_leaves(z, id, flatten=TRUE, drop_null=FALSE), list())
+  expect_equal(apply_to_leaves(z, id, flatten=FALSE, drop_null=TRUE), list())
+  expect_equal(apply_to_leaves(z, id, flatten=TRUE, drop_null=TRUE), list())
 })
 
 
@@ -54,6 +103,13 @@ test_that("model input leaves are correctly flattened", {
   
   expect_equal(flatten_model_input(x), l_flat_wrapped)
   expect_equal(flatten_model_input(x, TRUE), l_flat)
+  expect_equal(as_list(x, TRUE, TRUE), l_flat)
+  expect_equal(as_list(x, FALSE, TRUE), l_flat_wrapped)
+  expect_equal(as_list(x, TRUE, FALSE), l)
+  expect_equal(as_list(x, FALSE, FALSE), x$.data)
+  
+  expect_equal(flatten_model_input(ModelInput(list())), list())
+  expect_equal(flatten_model_input(ModelInput(list(a=list(b=list())))), list())
 })
 
 
@@ -68,6 +124,9 @@ test_that("model input and metadata slots are correctly flattened", {
   expect_equal(metadata_slots(x), l_metadata_slots)
   expect_equal(input_slots(ModelInput(list(a=1), untagged_is_input=FALSE)), list())
   expect_equal(metadata_slots(ModelInput(list(a=1))), list())
+  
+  expect_equal(metadata_slots(ModelInput(list())), list())
+  expect_equal(metadata_slots(ModelInput(list(a=list(b=list())))), list())
 })
 
 
@@ -75,11 +134,23 @@ test_that("model input flat to tree conversion works properly", {
   
   l <- list(a=1, b=list(c=list(d=MetadataSlot(2), e=3, f=InputSlot(list(g=4)))), h=list(i=MetadataSlot(5)))
   x <- ModelInput(l)
-  tree <- unflatten_model_input(input_slots(x), metadata_slots(x))
+  tree1 <- unflatten_model_input(input_slots(x), metadata_slots(x))
+  tree2 <- unflatten_model_input(input_slots(x))
+  tree3 <- unflatten_model_input(metadata=metadata_slots(x))
   
-  expect_true(is_model_input(tree))
-  expect_equal(input_slots(tree), input_slots(x))
-  expect_equal(metadata_slots(tree), metadata_slots(x))
+  expect_true(is_model_input(tree1))
+  expect_equal(input_slots(tree1), input_slots(x))
+  expect_equal(metadata_slots(tree1), metadata_slots(x))
+  
+  expect_true(is_model_input(tree2))
+  expect_equal(input_slots(tree2), input_slots(x))
+  expect_equal(metadata_slots(tree2), list())
+  
+  expect_true(is_model_input(tree3))
+  expect_equal(input_slots(tree3), list())
+  expect_equal(metadata_slots(tree3), metadata_slots(x))
+  
+  expect_equal(unflatten_model_input(), ModelInput(list()))
 })
 
 
@@ -166,6 +237,16 @@ test_that("Assignment of ModelInput value works properly", {
   x_mod_a <- x; x_mod_a$`a/x/y/` <- list(z=10)
   l_mod_a <- l; l_mod_a[["a"]] <- list(x=list(y=list(z=10)))
   expect_equal(x_mod_a, ModelInput(l_mod_a))
+  
+  y <- ModelInput(list())
+  y[["a/b/c"]] <- list()
+  expect_equal(y$.data, list(a=list(b=list(c=list()))))
+  
+  y[["a/b/c"]] <- 2
+  expect_equal(y$.data, list(a=list(b=list(c=InputSlot(2)))))
+  
+  y$a <- list()
+  expect_equal(y$.data, list(a=list()))
 })
 
 
