@@ -1,5 +1,5 @@
 ---
-title: "pecan_run_model"
+title: "API for Running PEcAn Models"
 output: html_document
 ---
 
@@ -158,12 +158,13 @@ input_settings <- list(
 We now wrap the above information in a PEcAn `settings` object.
 
 ```{r}
+
 settings_list <- list(
   
   # Directory information
-  outdir = base_out_dir,
-  modeloutdir = file.path(base_out_dir, "out"),
-  rundir = file.path(base_out_dir, "run"),
+  outdir = file.path(base_out_dir, "single_run"),
+  modeloutdir = file.path(base_out_dir, "single_run", "out"),
+  rundir = file.path(base_out_dir, "single_run", "run"),
   
   # Run model locally
   host = list(name="localhost"),
@@ -227,8 +228,8 @@ values as an argument to SIPNET's `write.config` function. Let's set up a
 
 ```{r}
 # Values to override in settings object
-settings_override <- .assign_value_at_path(list(), "run/inputs/met/path", 
-                                           get_met_path(1,2))
+settings_override <- .assign_tree_node_at_path(list(), "run/inputs/met/path", 
+                                               get_met_path(1,2))
 
 # Values to pass to write config function
 trait_values <- InputSlot(list(c(root_turnover_rate=0.5, Amax=100)))
@@ -276,6 +277,7 @@ settings_keys(model_input)
 # These are the values that will be set at the key paths
 settings_input_slots(model_input)
 ```
+
 In our current example only one value will be overwritten. As we will see, 
 when running the model the input slot overwriting is performed behind the 
 scenes. We can also perform this manually if desired. 
@@ -313,6 +315,84 @@ then reading the output the functions `prep_pecan_model_run()` and
 does under the hood.
 
 # Ensemble Runs
+
+```{r}
+# These filepaths must be constant across all runs, so should be set in 
+# `settings`, not `model_input` (this will eventually be enforced)
+settings$outdir <- file.path(base_out_dir, "ens_run")
+settings$modeloutdir <- file.path(settings$outdir, "out")
+settings$rundir <- file.path(settings$outdir, "run")
+
+# Ensemble of parameter values (one per row)
+trait_values_ens <- list(list(c(root_turnover_rate=0.5, Amax=100)), 
+                         list(c(root_turnover_rate=0.2, Amax=101)))
+
+# Define set of unique values in each input slot
+ic_key <- "settings/run/inputs/poolinitcond/path"
+met_key <- "settings/run/inputs/met/path"
+trait_key <- "config/trait.values"
+
+ic_vals <- list(get_ic_path(1,1), get_ic_path(2,1), get_ic_path(1,2), get_ic_path(2,2))
+met_vals <- list(get_met_path(1,2), get_met_path(2,2))
+trait_vals <- trait_values_ens
+
+slots <- list(ic_vals, met_vals, trait_vals)
+names(slots) <- c(ic_key, met_key, trait_key)
+```
+
+
+```{r}
+broadcast_rule <- list(recycle  = c(ic_key, met_key),
+                       identity = trait_key)
+ens_input <- EnsembleInputBroadcast(slots, broadcast_rule)
+
+summary(ens_input)
+```
+
+```{r}
+# We can extract run inputs by ID
+run1 <- get_run_input(ens_input, "run_1")
+print(run1)
+
+# This qualifies as a pecan model input since the `settings` and `config` 
+# branches are present.
+print(is_pecan_model_input(run1))
+
+# Config arguments for the first run
+config_args(run1)
+
+# Settings overrides for the first run
+settings_input_slots(run1)
+```
+
+```{r}
+# The second run
+run2 <- get_run_input(ens_input, "run_2")
+
+# Config arguments for the second run
+config_args(run2)
+
+# Settings overrides for the second run
+settings_input_slots(run2)
+```
+
+```{r}
+# Matrix encoding how each model input is constructed 
+mat_rule <- ens_input$mat_rule
+
+print(mat_rule)
+```
+
+```{r}
+ens_output <- run_model_ensemble(settings, ens_input, variables="GPP", 
+                                 print_summary=FALSE)
+
+for(i in seq_along(ens_output)) {
+  print(paste0("Run ", i, ":"))
+  print(head(ens_output[[i]]$GPP))
+}
+```
+
 
 
 

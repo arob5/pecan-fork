@@ -345,7 +345,7 @@ unflatten_model_input <- function(inputs=list(), metadata=list()) {
   for(nm in names(inputs)) {
     path <- .node_key_to_path(nm)
     val <- as_input_slot(inputs[[nm]])
-    tree <- .assign_value_at_path(tree, path, val, allow_overwrite=FALSE)
+    tree <- .assign_tree_node_at_path(tree, path, val, allow_overwrite=FALSE)
   }
   
   # Insert metadata
@@ -353,7 +353,7 @@ unflatten_model_input <- function(inputs=list(), metadata=list()) {
     for(nm in names(metadata)) {
       path <- .node_key_to_path(nm)
       val <- as_metadata_slot(metadata[[nm]])
-      tree <- .assign_value_at_path(tree, path, val, allow_overwrite=FALSE)
+      tree <- .assign_tree_node_at_path(tree, path, val, allow_overwrite=FALSE)
     }
   }
 
@@ -389,7 +389,7 @@ unflatten_model_input <- function(inputs=list(), metadata=list()) {
   # Allow access to internal data.
   if(identical(i, ".data")) return(unclass(x)[[i]])
   
-  node <- .resolve_model_input_path(x$.data, i, error_if_missing=FALSE)
+  node <- .get_tree_node_at_path(x$.data, i, error_if_missing=FALSE)
 
   if(is_model_input_leaf(node)) {
     return(node$value)
@@ -410,7 +410,7 @@ unflatten_model_input <- function(inputs=list(), metadata=list()) {
   # Allow access to internal data.
   if(name == ".data") return(unclass(x)$.data)
   
-  node <- .resolve_model_input_path(x$.data, name, error_if_missing=FALSE)
+  node <- .get_tree_node_at_path(x$.data, name, error_if_missing=FALSE)
   if(is.null(node)) return(NULL)
   
   if(is_model_input_leaf(node)) {
@@ -465,7 +465,7 @@ set_model_input_value <- function(x, key, value, untagged_is_input=TRUE, allow_o
   .check_model_input_type(x)
   if(is_model_input(value)) value <- value$.data
   
-  new_tree <- .assign_value_at_path(x$.data, key, value, allow_overwrite=allow_overwrite)
+  new_tree <- .assign_tree_node_at_path(x$.data, key, value, allow_overwrite=allow_overwrite)
   new_tree <- .validate_and_wrap_model_input(new_tree, untagged_is_input=untagged_is_input)
   
   structure(list(.data=new_tree), class=class(x))
@@ -882,7 +882,7 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 #' key path, either an error is thrown or \code{NULL} is returned, depending on 
 #' the argument \code{error_if_missing}.
 #' 
-#' @param x A nested named list. Cannot be a \code{ModelInput} object.
+#' @param tree A nested named list. Cannot be a \code{ModelInput} object.
 #' @param path character, either a string key path of the form \code{a/b/c} or
 #'  a vector path of the form \code{c("a", "b", "c")}.
 #' @param error_if_missing logical(1), if \code{TRUE} throws an error if no node
@@ -892,7 +892,7 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 #'  if \code{error_if_missing = TRUE} and no node exists at the path.
 #'  
 #' @author Andrew Roberts  
-.resolve_model_input_path <- function(tree, path, error_if_missing=TRUE) {
+.get_tree_node_at_path <- function(tree, path, error_if_missing=TRUE) {
 
   .check_arg_is_not_model_input(tree)
   path <- .parse_key_path(path, as_string=FALSE)
@@ -907,6 +907,21 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
   }
   
   return(tree)
+}
+
+
+#' Extract a tree leaf by its key path
+#'
+#' This is a wrapper around `.get_tree_node_at_path()`, which can extract
+#' leaves or sub-trees/branches. This function only returns leaves; if the
+#' key path points to a branch then \code{NULL} is returned.
+#'
+#' @author Andrew Roberts
+.get_tree_leaf_at_path <- function(tree, path, error_if_missing=TRUE) {
+  val <- .get_tree_node_at_path(tree, path, error_if_missing)
+  
+  if(is_model_input_leaf(val)) return(val)
+  else return(NULL)
 }
 
 
@@ -931,7 +946,7 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
 #'  found at that path.
 #'
 #' @author Andrew Roberts
-.assign_value_at_path <- function(tree, path, value, allow_overwrite=FALSE) {
+.assign_tree_node_at_path <- function(tree, path, value, allow_overwrite=FALSE) {
   
   .check_arg_is_not_model_input(tree)
   path <- .parse_key_path(path, as_string=FALSE)
@@ -956,7 +971,7 @@ print_tree <- function(x, prefix="", include_leaf_class=TRUE) {
     # Turning a leaf into a branch.
     if(is_model_input_leaf(tree[[nm]])) tree[[nm]] <- list()
     
-    tree[[nm]] <- .assign_value_at_path(tree[[nm]], rest_of_path, value,
+    tree[[nm]] <- .assign_tree_node_at_path(tree[[nm]], rest_of_path, value,
                                         allow_overwrite=allow_overwrite)
   }
   

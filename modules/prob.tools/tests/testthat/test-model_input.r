@@ -154,28 +154,28 @@ test_that("model input flat to tree conversion works properly", {
 })
 
 
-test_that(".resolve_model_input_path() correctly extracts element from nested list", {
+test_that(".get_tree_node_at_path() correctly extracts element from nested list", {
   
   a_element <- 1
   e_element <- 3
   d_branch <- list(e=e_element, f=4)
   l <- list(a=a_element, b=list(c=2, d=d_branch))
 
-  expect_equal(.resolve_model_input_path(l, "a"), a_element)
-  expect_equal(.resolve_model_input_path(l, "a/"), a_element)
-  expect_equal(.resolve_model_input_path(l, "b/d/e"), e_element)
-  expect_equal(.resolve_model_input_path(l, c("b", "d", "e")), e_element)
-  expect_equal(.resolve_model_input_path(l, "b/d/"), d_branch)
-  expect_equal(.resolve_model_input_path(l, c("b","d")), d_branch)
+  expect_equal(.get_tree_node_at_path(l, "a"), a_element)
+  expect_equal(.get_tree_node_at_path(l, "a/"), a_element)
+  expect_equal(.get_tree_node_at_path(l, "b/d/e"), e_element)
+  expect_equal(.get_tree_node_at_path(l, c("b", "d", "e")), e_element)
+  expect_equal(.get_tree_node_at_path(l, "b/d/"), d_branch)
+  expect_equal(.get_tree_node_at_path(l, c("b","d")), d_branch)
   
-  expect_null(.resolve_model_input_path(l, "a/b", error_if_missing=FALSE))
-  expect_null(.resolve_model_input_path(l, c("a","b"), error_if_missing=FALSE))
+  expect_null(.get_tree_node_at_path(l, "a/b", error_if_missing=FALSE))
+  expect_null(.get_tree_node_at_path(l, c("a","b"), error_if_missing=FALSE))
   
-  expect_error(.resolve_model_input_path(ModelInput(l), "a"))
-  expect_error(.resolve_model_input_path(l, "a/b"))
-  expect_error(.resolve_model_input_path(l, c("a", "b")))
-  expect_error(.resolve_model_input_path(l, "not/a/path"))
-  expect_error(.resolve_model_input_path(l, c("not", "a", "path")))
+  expect_error(.get_tree_node_at_path(ModelInput(l), "a"))
+  expect_error(.get_tree_node_at_path(l, "a/b"))
+  expect_error(.get_tree_node_at_path(l, c("a", "b")))
+  expect_error(.get_tree_node_at_path(l, "not/a/path"))
+  expect_error(.get_tree_node_at_path(l, c("not", "a", "path")))
 })
 
 
@@ -314,8 +314,8 @@ test_that("leaf depth computed correctly", {
 
 test_that("Assignment in nested list works correctly", {
   
-  expect_equal(.assign_value_at_path(list(), "a", 1), list(a=1))
-  expect_equal(.assign_value_at_path(list(), "a/b/c", 1), list(a=list(b=list(c=1))))
+  expect_equal(.assign_tree_node_at_path(list(), "a", 1), list(a=1))
+  expect_equal(.assign_tree_node_at_path(list(), "a/b/c", 1), list(a=list(b=list(c=1))))
   
   # Assigning values in R nested list.
   l <- list(a=list(b=list(c=1)), d=2)
@@ -323,12 +323,12 @@ test_that("Assignment in nested list works correctly", {
   l_mod_c <- l; l_mod_c$a$b$c <- 3
   l_add_branch <- l; l_add_branch$d <- list()
   
-  expect_equal(.assign_value_at_path(l, c("a", "b", "e"), 3), l_add_e)
-  expect_equal(.assign_value_at_path(l, "a/b/e/", 3), l_add_e)
-  expect_equal(.assign_value_at_path(l, c("a", "b", "c"), 3, allow_overwrite=TRUE), l_mod_c)
-  expect_equal(.assign_value_at_path(l, "d", list(), allow_overwrite=TRUE), l_add_branch)
-  expect_error(.assign_value_at_path(l, c("a", "b", "c"), 3))
-  expect_error(.assign_value_at_path(l, c("d"), list()))
+  expect_equal(.assign_tree_node_at_path(l, c("a", "b", "e"), 3), l_add_e)
+  expect_equal(.assign_tree_node_at_path(l, "a/b/e/", 3), l_add_e)
+  expect_equal(.assign_tree_node_at_path(l, c("a", "b", "c"), 3, allow_overwrite=TRUE), l_mod_c)
+  expect_equal(.assign_tree_node_at_path(l, "d", list(), allow_overwrite=TRUE), l_add_branch)
+  expect_error(.assign_tree_node_at_path(l, c("a", "b", "c"), 3))
+  expect_error(.assign_tree_node_at_path(l, c("d"), list()))
 })
 
 

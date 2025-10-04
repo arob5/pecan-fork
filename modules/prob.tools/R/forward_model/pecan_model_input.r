@@ -229,11 +229,57 @@ update_pecan_settings <- function(settings, model_input) {
   
   settings_override <- settings_tree(model_input)
   if(is_model_input(settings)) settings <- settings$.data
+  if(PEcAn.settings::is.Settings(settings)) settings <- unclass(settings)
   
   for(key in input_keys(settings_override)) {
-    val <- .resolve_model_input_path(settings_override$.data, key, error_if_missing=FALSE)$value
-    settings <- .assign_value_at_path(settings, key, val, allow_overwrite=TRUE)
+    val <- .get_tree_leaf_at_path(settings_override$.data, key, error_if_missing=FALSE)$value
+    settings <- .assign_tree_node_at_path(settings, key, val, allow_overwrite=TRUE)
   }
   
   PEcAn.settings::as.Settings(settings)
 }
+
+
+#' Resolve particular settings value without performing entire settings update
+#' 
+#' \code{update_pecan_settings()} updates all values in \code{settings}
+#' with overrides from \code{model_input}. This function updates one particular
+#' value, specified by \code{settings_key}.
+#' 
+#' @param settings named list, PEcAn \code{Settings} object, or a \code{ModelInput},
+#'  This represents the default settings.
+#' @param model_input A PEcAn \code{ModelInput} containing settings overrides in
+#'  the settings sub-tree.
+#' @param settings_key The key path identifying the settings value to extract.
+#' 
+#' @returns The value extracted either from \code{model_input} (which takes
+#' precedence) or \code{settings} (the default). Throws error if the path is
+#' found is neither. This function only operates on leaves; if \code{settings_key}
+#' points to a branch then an error will be thrown.
+#'
+#' @author Andrew Roberts
+#' @export
+resolve_pecan_settings_value <- function(settings, model_input, settings_key) {
+  settings_override <- settings_tree(model_input)
+  if(is_model_input(settings)) settings <- settings$.data
+  
+  # Value in `model_input` takes precedence. 
+  val <- .get_tree_leaf_at_path(settings_override$.data, settings_key, 
+                                error_if_missing=FALSE)
+  
+  # Fall back on default value. Class is stripped from settings since PEcAn
+  # `settings` object causes issues with `.get_tree_node_at_path`
+  if(is.null(val)) {
+    val <- .get_tree_leaf_at_path(unclass(settings), settings_key, 
+                                  error_if_missing=FALSE)
+  }
+  
+  if(is.null(val)) {
+    stop("No leaf found at key `", .parse_key_path(settings_key, as_string=TRUE), 
+         "` in either `settings` or `model_input` settings sub-tree.")
+  }
+  
+  if(is_tagged_leaf(val)) return(val$value)
+  else return(val)
+}
+
