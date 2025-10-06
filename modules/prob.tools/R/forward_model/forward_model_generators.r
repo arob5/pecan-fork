@@ -1,43 +1,266 @@
-# forward_model/forward_model_generators.r
+# forward_model/model_wrappers.r
 
-# TODOs:
-# - Force slots to align across runs.
-# - Write ModelInput.flatten_to_numeric() and ModelInput.unflatten_from_numeric() methods
-# - Write EnsembleInput.flatten_to_numeric() EnsembleInput.unflatten_from_numeric() methods
-# - Figure out how to handle run IDs
-
-# Forward model will accept matrix (one row per flattened input). The inputs
-# will then be vectorized. e.g., if we have slots:
-# l <- list(a=list(1,2,3), b=list(1:3, 4:6) and both slots are specified, then
-# each individual input will have length 4 (e.g, input one here is c(1,1:3)).
-# If a one row matrix is provided (one input) each individual model input will
-# be updated using the passed value.
+# ------------------------------------------------------------------------------
+# wrap_partial_slot_batch()
 #
-# What if more than one row is provided? We will interpret this as vectorizing
-# over the inputs. i.e., not messing the original ens_input template - that is
-# fixed. The template will be repeated once per row.
-#
-# The tricky part here: how do we specify how the passed input will be broadcast?
-# Start simple: require the broadcast representation and require the entire
-# slot to be selected as "free". e.g., for l <- list(a=list(1,2,3), b=list(1:3, 4:6),
-# if `slot_names = "b"` then the forward model will expect users to pass values
-# like list(1:3, 4:6) [though they will be passed in the form matrix(c(1:3, 4:6))].
-# The passed value will be inserted into this slot, which can then be broadcast.
-# It is up to the user to define slots such that each slot is either fixed
-# or free. Focus on ensemble input now, but should have dispatch single 
-# forward model if "default" is a ModelInput (this will be more straightforward).
+# Wrapper that allows passing in batches of slot values in matrix format
+# for a model ensemble run.
+# ------------------------------------------------------------------------------
 
-# Eventually, "Slot" should be turned into a class, which could provide validation
-# that all values of that slot are of the same type.
 
-# verbose printing should:
-# - Print fixed and free slots
-# - Dimension by slot of each free slot
-# - Print dimension of expected input
-# - Number of total runs in ensemble
-# - Forward model method that will be used (.function, .Settings, etc.)
-# - Information on how the input will be broadcast
+#' Generate a wrapper around \code{run_model_ensemble()} for batch inputs
+#'
+#' A model wrapper generator defined by fixing certain input slots. The wrapper
+#' is defined so that batches of values are passed in for the free slots. 
+#' This wrapper is thus defined purely for ensemble model runs, and has no
+#' analog for single model runs.
+#' 
+#' @details
+#' This wrapper takes an existing \code{EnsembleInputBroadcast}, and provides
+#' the means for users to pass in batches of values in the \code{slots} field.
+#' It is important to realize that the wrapper interface expects batches of
+#' values of a pre-defined size to be passed in, rather than vectorizing over 
+#' a single slot value. This means that the size and structure of the ensemble
+#' run is completely determined when generating the wrapper, which can be 
+#' convenient in that parallelization settings can be fixed in advance. The
+#' batch size of the free slots is determined from the values in \code{default}. 
+#' If multiple free slots are specified by \code{slot_names}, then the batch
+#' sizes for these slots are required to be equal. Let \code{n} denote the 
+#' batch size and \code{l1, ..., ls} denote the lengths of each free slot. The 
+#' length of a slot is the number of scalar entries making up a single value.
+#' The model wrapper is defined such that it expects an input matrix of shape
+#' \code{(n, l1 + ... + ls)}, with columns ordered according to \code{slot_names}.
+#' That is, the first \code{l1} columns correspond to \code{slot_names[1]}, the
+#' next \code{l2} columns to \code{slot_names[2]}, and so on. At present, it
+#' is required that the values in the free slots within \code{default} are 
+#' stored in matrix format. There is no reason for this to be the case in the 
+#' future; this can be generalized to any array-like values, in which case
+#' the matrix input will simply have to be re-shaped before filling in the 
+#' \code{default} template.
+#' 
+#' \code{output_operator} is an optional R function that is applied to the 
+#' return value of \code{run_model_ensemble()}. The user must ensure that this
+#' function is defined correctly with respect to the return value.
+#' 
+#' @param obj An R object representing the model.
+#' @param default An \code{EnsembleInputBroadcast} object acting as a template for
+#'  the ensemble run. The exact structure and number of runs can be inferred
+#'  from this template. The model wrapper will simply update the values of the 
+#'  free slots within this template.
+#' @param slot_names \code{character}, vector of slot names for the free slots.
+#' @param output_operator \code{function} or \code{NULL}. If provided, the
+#'  model wrapper represents the composition of the \code{run_model_ensemble()}
+#'  call with the \code{output_operator} function.
+#' @param verbose \code{logical(1)}, if \code{TRUE} prints information about
+#'  the wrapped model.
+#' @param .fixed_args named list of additional arguments to `run_model_ensemble()`
+#'  that are treated as immutable (fixed across all calls of model wrapper).
+#' @param .dynamic_args named list of additional arguments to 
+#'  `run_model_ensemble()` that are treated as mutable. In particular, the 
+#'  values of this list must consist of symbols or quoted expressions. These 
+#'  will be evaluated in the calling environment of the wrapped model, meaning
+#'  that their values will vary based on the current state of the calling environment.
+#'
+#' @returns \code{function}, the wrapped model with signature 
+#'  \code{function(input_mat, ...)}, where \code{input_mat} is a matrix of shape
+#'  \code{(n, l1 + l2 + ... + ls)}, as described in the details section.
+#'  
+#' @author Andrew Roberts
+#' @export
+wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NULL, 
+                                    verbose=TRUE, .fixed_args=list(),
+                                    .dynamic_args=list()) {
 
+  # Freeze arguments (except for dynamic arguments)
+  force(obj); force(default); force(slot_names); force(output_operator)
+  for(nm in names(.fixed_args)) force(.fixed_args[[nm]])
+  
+  # Determine dimension of matrix that must be input into the model wrapper.
+  slot_dims <- .validate_partial_slot_batch(default, slot_names, output_operator, 
+                                            .fixed_args, .dynamic_args)
+  ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
+  input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
+  
+  if(verbose) .print_partial_slot_batch_info(obj, default, slot_names, input_dim, 
+                                             output_operator, .fixed_args, .dynamic_args)
+  
+  function(input_mat, ...) {
+    
+    # Evaluate dynamic arguments from calling scope.
+    dyn_vals <- lapply(.dynamic_args, function(expr) eval(expr, envir=parent.frame()))
+    names(dyn_vals) <- names(.dynamic_args)    
+    
+    # Update model inputs.
+    ens_input <- .update_free_slots_batch(default, input_mat, slot_names, input_dim, ncol_per_slot)
+    
+    # Combine all arguments in order of priority (later overrides earlier)
+    extra_args <- merge_named_lists(.fixed_args, dyn_vals, list(...))
+    all_args <- c(list(model_obj=obj, ens_input=ens_input), extra_args)
+
+    # Return model ensemble output
+    output <- do.call(run_model_ensemble, all_args)
+    if(is.null(output_operator)) output else output_operator(output) 
+  }
+  
+}
+
+
+#' Update Batches of Values in Input Slots from Matrix
+#'
+#' A helper function for \code{\link{wrap_partial_slot_batch}}.
+#'
+#' @details
+#' Updates the batches of values (the entire value sets, not just a single
+#' value) in the slots specified by \code{free_slot_names}. These slots are 
+#' constrained to all have the same batch sizes. The new values are provided
+#' within a matrix \code{input_mat} with number of rows corresponding to the
+#' batch size. The columns contain the values for the slots, with different 
+#' contiguous column subsets allocated to different slots. This allocation is 
+#' done in the order of \code{free_slot_names} (i.e., the columns of \code{input_mat}
+#' and order of \code{free_slot_names} must be ordered correctly). 
+#' 
+#' @param ens_input An \code{EnsembleInputBroadcast} object.
+#' @param input_mat A matrix with number of rows equal to the batch size. Each
+#'  row contains a single value for each free slot, concatenated into a vector
+#'  in the order given by \code{free_slot_names}.
+#' @param input_dim The required dimension of the input matrix containing the 
+#'  new values. Used to validate \code{input_mat}.
+#' @param ncol_per_slot list of length equal to \code{length(free_slot_names}).
+#'  The number of columns of \code{input_mat} that should be allocated to 
+#'  each free slot. 
+#'
+#' @returns An \code{EnsembleInputBroadcast} object with updated \code{slots} field.
+#' 
+#' @author Andrew Roberts
+.update_free_slots_batch <- function(ens_input, input_mat, free_slot_names,
+                                     input_dim, ncol_per_slot) {
+  
+  input_mat <- wrap_as_multidim_array(input_mat)
+  assert_that(is.matrix(input_mat))
+  
+  if(!all(dim(input_mat) == input_dim)) {
+    stop("Forward model input has dimension ", .get_vector_string(dim(input_mat)),
+         ". Expected dimension ", .get_vector_string(input_dim))
+  }
+  
+  # Allocate values to each slot. Order of free_slot_names matters here.
+  idx_start <- 1L
+  for(i in seq_along(free_slot_names)) {
+    nm <- free_slot_names[[i]]
+    idx_end <- idx_start + ncol_per_slot[i] - 1L
+    ens_input$slots[[nm]] <- input_mat[,idx_start:idx_end, drop=FALSE]
+    idx_start <- idx_end + 1L
+  }
+  
+  return(ens_input)
+}
+
+
+#' Validate free slots for partial slot matrix wrapper
+#'
+#' Validation for \code{\link{wrap_partial_slot_batch}}. Ensures that the selected
+#' slots are matrix-like and all have the same batch size.
+#' 
+#' @param default An \code{EnsembleInputBroadcast} object.
+#' @param slot_names \code{character}, the names of the free slots.
+#' @param output_operator \code{function} or \code{NULL}. If provided, the
+#'  model wrapper represents the composition of the \code{run_model_ensemble()}
+#'  call with the \code{output_operator} function.
+#' @param .fixed_args list of fixed arguments. See \code{wrap_partial_slot_batch}.
+#' @param .dynamic_args list of dynamic arguments. See \code{wrap_partial_slot_batch}.
+#' 
+#' @returns Invisibly returns list of dimensions of each free batch slot. 
+#'  At present, the free slot batches are constrained to be matrices (one row
+#'  per slot value). Therefore, each element of this list will be a two 
+#'  element integer vector representing the matrix dimensions. The first axis
+#'  of each vector corresponds to the batch dimension, and will be equal across 
+#'  all slots. Throws error if free slots do not meet requirements.
+#'
+#' @author Andrew Roberts
+.validate_partial_slot_batch <- function(default, slot_names, output_operator,
+                                         .fixed_args, .dynamic_args) {
+  
+  # validate_broadcast_fwd_model_slots(default, slot_names)
+  
+  assert_that(is.function(output_operator) || is.null(output_operator),
+              msg=paste0("`output_operator` must be a function or NULL. Got ", 
+                         paste(class(output_operator), collapse=", ")))
+  
+  # Ensure all selected slots are flattened batch arrays (matrix). Slot values
+  # are stored in the rows of the matrix.
+  free_slots <- default$slots[slot_names]
+  
+  if(!all(vapply(free_slots, is_matrix_like, logical(1)))) {
+    stop("Matrix forward model requires all free slots to be matrices ",
+         "(one row per value)")
+  }
+  
+  free_slots <- lapply(free_slots, wrap_as_multidim_array)
+  n_batch_per_slot <- vapply(free_slots, nrow, integer(1))
+  if(length(unique(n_batch_per_slot)) > 1L) {
+    stop("`wrap_partial_slot_mat()` requires all slots to have same batch size ",
+         "(number of rows).")
+  }
+  
+  # Validate fixed and dynamic arguments.
+  .check_fixed_and_dynamic_args(.fixed_args, .dynamic_args)
+  
+  # Return dimensions of each slot.
+  invisible(lapply(free_slots, dim))
+}
+
+
+#' Print information about partial slot matrix wrapper
+#'
+#' Prints information summarizing the setup of the model wrapper constructed
+#' by \code{\link{wrap_partial_slot_batch}}.
+#' 
+#' @param obj R object representing the model.
+#' @param default An \code{EnsembleInputBroadcast} object.
+#' @param slot_names \code{character}, the names of the free slots.
+#' @param input_dim \code{integer}, two-element vector representing the matrix
+#'  dimensions for the matrix input to the model wrapper.
+#' @param output_operator function or \code{NULL}. See \code{wrap_partial_slot_batch}.
+#' @param .fixed_args list of fixed arguments. See \code{wrap_partial_slot_batch}.
+#' @param .dynamic_args list of dynamic arguments. See \code{wrap_partial_slot_batch}.
+#'  
+#' @returns none. Prints to standard output.
+#' @author Andrew Roberts
+.print_partial_slot_batch_info <- function(obj, default, slot_names, input_dim,
+                                           output_operator, .fixed_args, .dynamic_args) {
+  
+  cat("--- Model wrapper: partial slot with matrix input ---\n\n")
+  
+  cat("Forward model signature: function(input_mat, ...)\n")
+  cat("input_mat shape: ", .get_vector_string(input_dim), "\n", sep="")
+  cat("Free slots: ")
+  cat(paste(slot_names, collapse=", "), "\n\n")
+  
+  method_name <- paste0("run_model.", class(obj)[1])
+  cat("Run model method:", method_name,"\n\n")
+  
+  if(length(.fixed_args) > 0L) cat("Fixed arguments:", paste(names(.fixed_args), collapse=", "), "\n")
+  if(length(.dynamic_args) > 0L) cat("Dynamic arguments:", paste(names(.dynamic_args), collapse=", "), "\n\n")
+  
+  cat("Output operator specified:", !is.null(output_operator), "\n\n")
+  
+  cat("Default EnsembleInput:\n")
+  summary(default)
+}
+
+
+# ------------------------------------------------------------------------------
+# TODO:
+# - This code is incomplete/in flux. It is intended to define a wrapped model
+#   that allows users to pass in a single value of a slot, or multiple values
+#   in which case the behavior will be vectorized over that slot.
+# - Need to determine how best to define this. It probably makes sense to provide
+#   an interface like `wrap_model_vectorized_slots(obj, fixed_slots, broadcast_rule, free_slot_dims, ...)`.
+#   Here, `free_slot_dims` would be a named list of dimensions for each slot.
+#   The wrapped model would then expect a matrix, with one value per row. This
+#   batch of values for the free slots would be Cartesian product'd against
+#   the ensemble input consisting of the fixed slots.
+# ------------------------------------------------------------------------------
 
 #' Generate a forward model function
 #'
@@ -206,108 +429,66 @@ gen_forward_model <- function(model_obj, ens_template, free_slot_names, input_ty
 }
 
 
+# ------------------------------------------------------------------------------
+# Helper/utility functions for model wrappers
+# ------------------------------------------------------------------------------
 
-
-
-
-
-
-
-# Start simple by not vectorizing; just pass one value, which then gets 
-# broadcast out according to the template.
-gen_matrix_fixed_dim_fwd_model <- function(obj, default, slot_names, output_operator=NULL, verbose=TRUE) {
-
-  # Freeze arguments.
-  force(obj); force(default); force(slot_names); force(output_operator)
-  
-  slot_dims <- .validate_matrix_fixed_dim_fwd_model(default, slot_names)
-  ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
-  input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
-  
-  if(verbose) print_fwd_model_info(obj, default, slot_names, input_dim)
-
-  function(input_mat, ...) {
-    ens_input <- update_free_slots(default, input_mat, slot_names, input_dim, ncol_per_slot)
-    output <- run_model_ensemble(obj, ens_input, ...)
-    if(!is.null(output_operator)) output_operator(output)
-  }
+#' Apply modifyList to multiple lists.
+#'
+#' Later arguments take precedence over earlier ones. All elements must be
+#' named.
+#'
+#' @export
+merge_named_lists <- function(...) {
+  arglists <- list(...)
+  Reduce(modifyList, arglists)
 }
 
 
-update_free_slots <- function(ens_input, input_mat, free_slot_names,
-                              input_dim, ncol_per_slot) {
-  
-  input_mat <- wrap_as_multidim_array(input_mat)
-  assert_that(is.matrix(input_mat))
-  
-  if(!all(dim(input_mat) == input_dim)) {
-    stop("Forward model input has dimension ", .get_vector_string(dim(input_mat)),
-         ". Expected dimension ", .get_vector_string(input_dim))
-  }
-  
-  # Allocate values to each slot. Order of free_slot_names matters here.
-  idx_start <- 1L
-  for(i in seq_along(free_slot_names)) {
-    nm <- free_slot_names[[i]]
-    idx_end <- idx_start + ncol_per_slot[i] - 1L
-    ens_input$slots[[nm]] <- input_mat[,idx_start:idx_end, drop=FALSE]
-    idx_start <- idx_end + 1L
-  }
-  
-  return(ens_input)
-}
-
-
-.validate_matrix_fixed_dim_fwd_model <- function(default, slot_names) {
-  
-  validate_broadcast_fwd_model_slots(default, slot_names)
-
-  # Ensure all selected slots are flattened batch arrays (matrix). Slot values
-  # are stored in the rows of the matrix.
-  free_slots <- default$slots[slot_names]
-  
-  if(!all(vapply(free_slots, is_matrix_like, logical(1)))) {
-    stop("Matrix forward model requires all free slots to be matrices ",
-         "(one row per value)")
-  }
-  
-  free_slots <- lapply(free_slots, wrap_as_multidim_array)
-  n_batch_per_slot <- vapply(free_slots, nrow, integer(1))
-  if(length(unique(n_batch_per_slot)) > 1L) {
-    stop("Matrix forward model requires all slots to have same batch size ",
-         "(number or rows).")
-  }
-  
-  # Return dimensions of each slot.
-  invisible(lapply(free_slots, dim))
-}
-
-
-print_fwd_model_info <- function(obj, default, slot_names, input_dim) {
-  
-  cat("--- Generating forward model with matrix input ---\n\n")
-  
-  cat("Forward model signature: function(input_mat, ...)\n")
-  cat("input_mat shape: ", .get_vector_string(input_dim), "\n", sep="")
-  cat("Free slots: ")
-  cat(paste(slot_names, collapse=", "), "\n\n")
-  
-  method_name <- paste0("run_model.", class(obj)[1])
-  cat("Run model method:", method_name,"\n\n")
-
-  cat("Default EnsembleInput:\n")
-  summary(default)
-}
-
-
+#' Get string representation of vector
+#'
+#' Given a vector of the form \code{c("a", "b", "c")}, returns a string of the
+#' form \code{`("a","b","c")`}.
+#'
+#' @author Andrew Roberts
 .get_vector_string <- function(dims) {
   paste0("(", paste(dims, collapse=","), ")")
 }
 
 
+#' Validation for fixed and dynamic arguments
+#'
+#' Ensures these arguments are named lists with unique, non-overlapping names.
+#' Also ensures that all dynamic arguments are symbols or quoted expressions.
+#' 
+#' @returns \code{TRUE} (invisibly) if validation passed. Otherwise throws error.
+#' @author Andrew Roberts
+.check_fixed_and_dynamic_args <- function(.fixed_args, .dynamic_args) {
+  
+  assert_that(is.list(.fixed_args) && is.list(.dynamic_args))
+  
+  nm <- c(names(.fixed_args), names(.dynamic_args))
+  if(anyDuplicated(nm) > 0L) {
+    stop("`.fixed_args` and `.dynamic_args` must have unique, non-overlapping names.")
+  }
+  
+  # Ensure dynamic args ars symbols or quoted expressions.
+  invalid_arg <- !vapply(.dynamic_args, is_quoted, logical(1))
+  if(any(invalid_arg)) {
+    stop(
+      sprintf("Each element of `.dynamic_args` must be a quoted symbol or expression. Problematic arguments: %s",
+              paste(names(.dynamic_args)[invalid_arg], collapse=", ")),
+      call.=FALSE
+    )
+  }
+  
+  invisible(TRUE)
+}
 
 
-
+is_quoted <- function(x) {
+  inherits(x, "name") || inherits(x, "call")
+}
 
 
 

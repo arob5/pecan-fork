@@ -51,32 +51,6 @@ input_slots(get_run_input(ei, "run_20"))
 ```
 
 
-```{r}
-# Define so that the forward model accepts one value per free slot
-# Or multiple such values; i.e., not passing in "value sets".
-# If passing one value per slot, there is no need to pass a "new_slot_rule"
-# since there is only one way the slots can be combined (matching).
-# I guess for now keep the current approach of assuming that the current ei
-# stores the "batch dims" for these slots, and we back out the individual value
-# dimension.
-#
-# Allow passing values as:
-#  (1) list of arrays
-#  (2) list of lists of arrays (all sub-lists must be of equal length)
-#  (3) matrix (flat representation - one row per value)
-#
-# With this setup, there is only one way that the free slots can be broadcast -
-# taking a product with the fixed slots. So perhaps it makes more sense to 
-# specify a "base" ens_input that only has fixed slots. Any new slots will
-# be matched against each other, and then Cartesian product'd against the
-# existing fixed slots. This is a fairly natural notion of "vectorized".
-
-gen_vectorized_forward_model(f, base_ens_input,
-                             new_slot_dims=list(d=4, e=c(3,3)),
-                             output_operator)
-```
-
-
 Suppose we want to generate a forward model that uses this ensemble run as 
 the "run template"; that is, each execution of the forward model will run
 the underlying model 24 times. Suppose also that we want to be able to pass in
@@ -88,7 +62,7 @@ model.
 # Just print the input to visualize what is happening.
 f <- function(x) {
   x <- input_slots(x)
-  print(paste0(x$a, " - ", x$b, " - ", .get_dims_string(x$c)))
+  print(paste0(x$a, " - ", x$b, " - ", .get_vector_string(x$c)))
 }
 ```
 
@@ -101,7 +75,7 @@ generator by default prints a description of the forward model, which can
 be silenced by setting `verbose = FALSE`.
 
 ```{r}
-fwd <- gen_matrix_fwd_model(f, ei, slot_names="c")
+fwd <- wrap_partial_slot_batch(f, ei, slot_names="c")
 ```
 
 Here's what the forward model looks like when printed. It is simply an R 
@@ -148,5 +122,165 @@ Trying to pass invalid inputs will result in errors.
 try(fwd(NULL)) # Non-array input
 try(fwd(1:2))  # Incorrect dimension
 ```
+
+# Other features
+
+## Multiple Free Slots
+
+We can also define a wrapped model where multiple slots are free. The 
+function `wrap_partial_slot_batch()` imposes the requirement that the batch
+size for these slots is the same. This allows the input to the wrapped model 
+to be a matrix as before, where the number of rows is the common batch size
+across the free slots. One row of this matrix represents one combination of 
+values for all of the free slots, which have been concatenated into a single
+vector.
+
+```{r}
+# Free slots (a,b,c) all have common batch size (2 in this case). Final slot 
+# (d) is fixed. 
+slot_list <- list(
+  a = matrix(1:4, nrow=2L),
+  b = matrix(1:10, nrow=2L),
+  c = matrix(1:2, nrow=2L),
+  d = list("a", "b", "c", "d")
+)
+
+ei <- EnsembleInputBroadcast(slot_list, 
+                             list_rule = list(recycle = names(slot_list)))
+
+# Summary of ensemble
+summary(ei)
+
+# Looking at inputs for a particular run
+input_slots(get_run_input(ei, "run_2"))
+```
+```{r}
+# Define the model.
+f <- function(x) {
+  out <- paste(.get_vector_string(x$a), .get_vector_string(x$b),
+               .get_vector_string(x$c), x$d, sep=" | ")
+  
+  return(out)
+}
+
+# Test evaluation.
+mi <- get_run_input(ei, "run_3")
+f(mi)
+```
+
+```{r}
+fwd <- wrap_partial_slot_batch(f, ei, slot_names=c("a", "b", "c"))
+```
+
+```{r}
+# Verify the output is as expected.
+out1 <- run_model_ensemble(f, ei)
+
+free_slots_mat <- cbind(ei$slots$a, ei$slots$b, ei$slots$c)
+out2 <- fwd(free_slots_mat)
+
+all.equal(out1, out2)
+```
+
+```{r}
+# Run at new values of input slots. 
+new_vals <- matrix(1:16, nrow=2L)
+fwd(new_vals)
+```
+
+
+## Output operator
+
+Sometimes the model output is not needed directly, but rather some function
+of the model output is desired. This could be defined manually, but the 
+function `wrap_partial_slot_batch()` accepts an optional argument 
+`output_operator` that serves this purpose. The `output_operator` is a function
+that acts on the ensemble output list. In the example below, we define a 
+toy output operator that simply concatenates all of the strings in the output list.
+
+```{r}
+# Define output operator.
+output_op <- function(l) paste(l, collapse="\n")
+
+# Generate model wrapper that includes output operator.
+fwd_concat <- wrap_partial_slot_batch(f, ei, slot_names=c("a", "b", "c"),
+                                      output_operator=output_op)
+
+# Run model ensemble.
+cat(fwd_concat(new_vals))
+
+```
+
+## Additional fixed arguments
+
+Suppose the model `f` takes auxiliary arguments that are not included in 
+`model_input`. One might wish to fix the values of these arguments when 
+the model wrapper is created. This can be done with the `.fixed_args`
+argument. These arguments must be named, and are immutable (they are fixed
+over all calls to the wrapped model).
+
+```{r}
+# Add auxiliary argument to previous model.
+f <- function(x, aux_arg) {
+  out <- paste(.get_vector_string(x$a), .get_vector_string(x$b),
+               .get_vector_string(x$c), x$d, aux_arg, sep=" | ")
+  
+  return(out)
+}
+
+# Pass auxiliary argument as fixed argument.
+fwd_concat <- wrap_partial_slot_batch(f, ei, slot_names=c("a", "b", "c"),
+                                      output_operator=output_op, 
+                                      .fixed_args=list(aux_arg="auxarg"))
+
+# Run ensemble model.
+cat(fwd_concat(new_vals))
+
+# Run ensemble model again with new model inputs. The fixed auxiliary argument
+# will remain unchanged.
+cat(fwd_concat(free_slots_mat))
+```
+
+## Dynamic Arguments
+
+In other situations, a user might want an auxiliary argument to `f` to reflect
+the current value of a variable in the calling scope of the wrapped model.
+This can also be accommodated by passing the argument via `.dynamic_args`.
+Dynamic arguments should be symbols or quoted objects. This can be useful 
+when the wrapped model will be called repeatedly in some sort of iterative 
+algorithm. We may want to treat the iteration number as a dynamic argument,
+and use the iteration for some sort of logging or output path specification
+within the model.
+
+Below, we modify the previous example to feature both a fixed and dynamic argument.
+
+```{r}
+# Add another auxiliary argument to previous model.
+f <- function(x, aux_arg, dyn_arg) {
+  out <- paste(.get_vector_string(x$a), .get_vector_string(x$b),
+               .get_vector_string(x$c), x$d, aux_arg, dyn_arg, sep=" | ")
+  
+  return(out)
+}
+
+# Treat the new auxiliary variable as dynamic.
+fwd_concat <- wrap_partial_slot_batch(f, ei, slot_names=c("a", "b", "c"),
+                                      output_operator=output_op, 
+                                      .fixed_args=list(aux_arg="auxarg"),
+                                      .dynamic_args=list(dyn_arg=quote(dyn_var)))
+
+# Will throw error since `dyn_var` is not defined.
+try(cat(fwd_concat(new_vals)))
+
+# Specify value of the dynamic variable and run model ensemble.
+dyn_var <- "dynvar"
+cat(fwd_concat(new_vals))
+
+# Run ensemble model again with new model inputs. Dynamic variable will be updated.
+dyn_var <- "dynvarnew"
+cat(fwd_concat(free_slots_mat))
+```
+
+
 
 
