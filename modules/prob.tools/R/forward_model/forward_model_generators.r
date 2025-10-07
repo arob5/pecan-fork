@@ -60,6 +60,11 @@
 #'  values of this list must consist of symbols or quoted expressions. These 
 #'  will be evaluated in the calling environment of the wrapped model, meaning
 #'  that their values will vary based on the current state of the calling environment.
+#' @param .arg_update_fn function or NULL. If a function, must be a pure function
+#'  (no side effects), accept a named list of arguments to `run_model_ensemble()`, 
+#'  and return a named list of (potentially modified) arguments. This may be useful 
+#'  when some auxiliary arguments of the model should be updated dynamically based 
+#'  on the current value of the dynamic arguments.
 #'
 #' @returns \code{function}, the wrapped model with signature 
 #'  \code{function(input_mat, ...)}, where \code{input_mat} is a matrix of shape
@@ -69,20 +74,21 @@
 #' @export
 wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NULL, 
                                     verbose=TRUE, .fixed_args=list(),
-                                    .dynamic_args=list()) {
+                                    .dynamic_args=list(), .arg_update_fn=NULL) {
 
   # Freeze arguments (except for dynamic arguments)
-  force(obj); force(default); force(slot_names); force(output_operator)
+  force(obj); force(default); force(slot_names); force(output_operator); force(.arg_update_fn)
   for(nm in names(.fixed_args)) force(.fixed_args[[nm]])
   
   # Determine dimension of matrix that must be input into the model wrapper.
   slot_dims <- .validate_partial_slot_batch(default, slot_names, output_operator, 
-                                            .fixed_args, .dynamic_args)
+                                            .fixed_args, .dynamic_args, .arg_update_fn)
   ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
   input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
   
   if(verbose) .print_partial_slot_batch_info(obj, default, slot_names, input_dim, 
-                                             output_operator, .fixed_args, .dynamic_args)
+                                             output_operator, .fixed_args, 
+                                             .dynamic_args, .arg_update_fn)
   
   function(input_mat, ...) {
     
@@ -96,6 +102,12 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
     # Combine all arguments in order of priority (later overrides earlier)
     extra_args <- merge_named_lists(.fixed_args, dyn_vals, list(...))
     all_args <- c(list(model_obj=obj, ens_input=ens_input), extra_args)
+    
+    # Optionally update arguments (potentially based on values of dynamics args).
+    if(!is.null(.arg_update_fn)) {
+      all_args <- .arg_update_fn(all_args)
+      if(!is.list(all_args) || !has_unique_names(all_args)) stop(".arg_update_fn() must return a named list.")
+    }
 
     # Return model ensemble output
     output <- do.call(run_model_ensemble, all_args)
@@ -168,6 +180,7 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
 #'  call with the \code{output_operator} function.
 #' @param .fixed_args list of fixed arguments. See \code{wrap_partial_slot_batch}.
 #' @param .dynamic_args list of dynamic arguments. See \code{wrap_partial_slot_batch}.
+#' @param .arg_update_fn function or NULL. See \code{wrap_partial_slot_batch}.
 #' 
 #' @returns Invisibly returns list of dimensions of each free batch slot. 
 #'  At present, the free slot batches are constrained to be matrices (one row
@@ -178,13 +191,17 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
 #'
 #' @author Andrew Roberts
 .validate_partial_slot_batch <- function(default, slot_names, output_operator,
-                                         .fixed_args, .dynamic_args) {
+                                         .fixed_args, .dynamic_args, .arg_update_fn) {
   
   # validate_broadcast_fwd_model_slots(default, slot_names)
   
   assert_that(is.function(output_operator) || is.null(output_operator),
               msg=paste0("`output_operator` must be a function or NULL. Got ", 
                          paste(class(output_operator), collapse=", ")))
+  
+  assert_that(is.function(.arg_update_fn) || is.null(.arg_update_fn),
+              msg=paste0("`.arg_update_fn` must be a function or NULL. Got ", 
+                         paste(class(.arg_update_fn), collapse=", ")))
   
   # Ensure all selected slots are flattened batch arrays (matrix). Slot values
   # are stored in the rows of the matrix.
@@ -223,11 +240,13 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
 #' @param output_operator function or \code{NULL}. See \code{wrap_partial_slot_batch}.
 #' @param .fixed_args list of fixed arguments. See \code{wrap_partial_slot_batch}.
 #' @param .dynamic_args list of dynamic arguments. See \code{wrap_partial_slot_batch}.
+#' @param .arg_update_fn function or NULL. See \code{wrap_partial_slot_batch}.
 #'  
 #' @returns none. Prints to standard output.
 #' @author Andrew Roberts
 .print_partial_slot_batch_info <- function(obj, default, slot_names, input_dim,
-                                           output_operator, .fixed_args, .dynamic_args) {
+                                           output_operator, .fixed_args, 
+                                           .dynamic_args, .arg_update_fn) {
   
   cat("--- Model wrapper: partial slot with matrix input ---\n\n")
   
@@ -242,7 +261,8 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
   if(length(.fixed_args) > 0L) cat("Fixed arguments:", paste(names(.fixed_args), collapse=", "), "\n")
   if(length(.dynamic_args) > 0L) cat("Dynamic arguments:", paste(names(.dynamic_args), collapse=", "), "\n\n")
   
-  cat("Output operator specified:", !is.null(output_operator), "\n\n")
+  cat("Output operator specified:", !is.null(output_operator), "\n")
+  cat("Arg update function specified:", !is.null(.arg_update_fn), "\n\n")
   
   cat("Default EnsembleInput:\n")
   summary(default)

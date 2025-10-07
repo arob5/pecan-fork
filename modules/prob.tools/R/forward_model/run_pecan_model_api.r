@@ -6,10 +6,9 @@
 # consistent interface for specifying outputs and returning outputs in a standard
 # format. The lowest-level building block consists of an API for prepping a 
 # model run (i.e., writing configs). Higher level protocols define interfaces
-# for running models (prepping then running) and running models and reading 
-# their outputs (prepping, running, and reading). APIs are provided for both
-# single runs and ensemble model runs. Ensemble model runs are defined as 
-# a set of model runs of a model, with each run using (potentially) different inputs.
+# for starting model runs (prepping then executing) and running a model 
+# (prepping, executing, and reading inputs). APIs are provided for both
+# single runs and ensemble model runs. 
 #
 # APIs for single model run:
 #   run_model(), prep_pecan_model_run(), start_pecan_model_run()    
@@ -33,33 +32,18 @@
 #' 
 #' @details
 #' At present, this API is defined so that PEcAn's standard model run workflow
-#' can be executed without modification. A PEcAn model execution requires 
-#' the inputs \code{trait.values}, \code{run.id}, and \code{settings}. 
-#' PEcAn \code{Settings} objects contain settings beyond those necessary to run the
-#' model. Thus, to be more specific, the \code{settings} input is typically used
-#' to specify required driver (meteorology) and initial condition (IC) inputs
-#' via the fields \code{settings$run$inputs$met, settings$run$inputs$poolinitcond}.
-#' Beyond model inputs, the settings object defines the model to be run via
-#' \code{settings$model}, as well as the filepaths:
-#' \itemize{
-#'  \item \code{settings$outdir}: the highest level output directory for the run.
-#'  \item \code{settings$modeloutdir}: directory to which model outputs will be written.
-#'  \item \code{settings$rundir}: directory to which config files will be saved.
-#' }
-#'     
-#' The PEcAn workflow allows users to manually pass in model parameters via
-#' the \code{trait.values} argument. Some models allow runtime specification
-#' of other model inputs (e.g., initial conditions).
-#' 
-#' To respect the PEcAn workflow structure, the run model API is structured as follows:  
-#' \itemize{
-#'  \item \code{settings$outdir}: \code{settings}
-#'  \item \code{settings$modeloutdir}: directory to which model outputs will be written.
-#'  \item \code{settings$rundir}: directory to which config files will be saved.
-#' }
+#' can be executed without modification. The PEcAn \code{settings} object contains
+#' settings that will remain fixed, while the PEcAn \code{model_input} object
+#' contains model inputs that may vary across executions of the model. This
+#' object serves a dual purpose: (1) it overwrites values in \code{settings},
+#' and (2) it stores arguments to pass to the write config function. 
+#' \code{model_input} is not allowed to contain certain settings that should 
+#' not be overwritten, including the outdir, rundir, and modeloutdir filepaths
+#' and information from the "model" block. See \code{\link{PecanModelInput}}
+#' for more details.
 #'
 #' @param settings A PEcAn \code{Settings} object.
-#' @param model_input A \code{ModelInput} object.
+#' @param model_input A PEcAn \code{ModelInput} object.
 #' @param run_id character(1), a unique string identifier for the run. Will be 
 #'  auto-generated if not provided.
 #' @param overwrite_runs_file logical(1), if \code{TRUE}, overwrites any existing
@@ -94,6 +78,15 @@ run_model.Settings <- function(settings, model_input, run_id=NULL,
 }
 
 
+#' Prep and Execute PEcAn Model Run
+#'
+#' This function behaves like \code{\link{run_model.Settings}}, but differs
+#' in that it does not attempt to read the model output from file.
+#'
+#' @returns the run ID (invisibly).
+#'
+#' @author Andrew Roberts
+#' @export
 start_pecan_model_run <- function(settings, model_input, run_id=NULL,
                                   overwrite_runs_file=FALSE) {
   
@@ -109,16 +102,18 @@ start_pecan_model_run <- function(settings, model_input, run_id=NULL,
 }
 
 
-#' Write Configuration Files to Disk
-#' 
-#' Writes inputs for a PEcAn model to file, and writes the \code{run_id} to the
-#' \code{runs.txt} file. Does not actually run the model - prepares the model
-#' for execution using \code{PEcAn.workflow::start_model_runs()}.
+#' Prep a PEcAn Model Run
 #'
-#'  
+#' Writes PEcAn config to file, and writes the \code{run_id} to the
+#' \code{runs.txt} file. Does not actually run the model. See 
+#' \code{\link{run_model.Settings}} and \code{\link{start_pecan_model_run}}.
+#'
 #' @returns Invisibly returns the \code{run_id}. Loads the PEcAn model package
 #'  and uses the write config function from this package to write configuration
 #'  files to disk.
+#'
+#' @author Andrew Roberts
+#' @export
 prep_pecan_model_run <- function(settings, model_input, run_id=NULL, 
                                  overwrite_runs_file=FALSE) {
 
@@ -158,7 +153,29 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
 # Model Ensemble Run
 # ------------------------------------------------------------------------------
 
-
+#' Run PEcAn model ensemble and return outputs
+#'
+#' The PEcAn method for the \code{run_model_ensemble()} generic.
+#' 
+#' @details
+#' Writes configs to file for each run within the ensemble. All run IDs are 
+#' written to the file \code{file.path(settings$rundir, "runs.txt")}. The 
+#' \code{PEcAn.workflow::start_model_runs()} function is used to execute all 
+#' model runs. The output from the runs is then read into a list (one element
+#' per run) by calling \code{PEcAn.utils::read.output()} for each run.
+#' 
+#' @param settings A PEcAn \code{settings} file.
+#' @param ens_input A PEcAn \code{EnsembleInput} object.
+#' @param overwrite_runs_file logical(1), if \code{TRUE} then any existing 
+#'  \code{runs.txt} file is overwritten. Otherwise it is appended to.
+#' @param ... Additional arguments passed to \code{PEcAn.utils::read.output()}.
+#' 
+#' @returns list of length equal to the number of runs in the ensemble, with
+#'  each element storing the output for the respective run. The list names are
+#'  set to the run IDs.
+#'  
+#' @author Andrew Roberts
+#' @export
 run_model_ensemble.Settings <- function(settings, ens_input,
                                         overwrite_runs_file=FALSE, ...) {
 
@@ -233,3 +250,55 @@ get_run_modeloutdir <- function(settings, ens_input, run_id) {
   model_input <- get_run_input(ens_input, run_id)
   resolve_pecan_settings_value(settings, model_input, "modeloutdir")
 }
+
+
+# ------------------------------------------------------------------------------
+# Model Wrappers
+# ------------------------------------------------------------------------------
+
+#' TODO
+#'
+#' A PEcAn-specific wrapper around \code{wrap_partial_slot_batch()} that provides
+#' additional special functionality for PEcAn runs. Note that 
+#' \code{wrap_partial_slot_batch()} can also be used with PEcAn models, but 
+#' this function is typically recommended for common PEcAn use cases.
+#' 
+#' @details
+#' 
+#' 
+#'
+wrap_pecan_partial_slot_batch <- function(settings, default, slot_names, 
+                                          output_operator=NULL, 
+                                          verbose=TRUE, dynamic_subdir=NULL) {
+
+  if(is.null(dynamic_subdir)) {
+    .arg_update_fn <- NULL
+    .dynamic_args <- NULL
+  } else {
+    
+    # Variable used to dynamically update filepaths.
+    .dynamic_args <- list(subdir = dynamic_subdir)
+    
+    # Dynamically update rundir and modeloutdir. 
+    .arg_update_fn <- function(args) {
+      settings <- args$model_obj
+      args$model_obj$rundir <- file.path(settings$outdir, args$subdir, "run")
+      args$model_obj$modeloutdir <- file.path(settings$outdir, args$subdir, "out")
+      return(args)
+    }
+  }
+  
+  wrap_partial_slot_batch(obj = settings,
+                          default = default,
+                          slot_names = slot_names,
+                          output_operator = output_operator,
+                          verbose = verbose,
+                          .fixed_args = list(overwrite_runs_file=TRUE),
+                          .dynamic_args = .dynamic_args,
+                          .arg_update_fn = .arg_update_fn)
+}
+
+
+
+
+
