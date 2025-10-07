@@ -31,6 +31,7 @@ source(file.path(fwd_dir, "model_input.r"))
 source(file.path(fwd_dir, "pecan_model_input.r"))
 source(file.path(fwd_dir, "run_model_api.r"))
 source(file.path(fwd_dir, "run_pecan_model_api.r"))
+source(file.path(fwd_dir, "forward_model_generators.r"))
 source(file.path(fwd_dir, "ensemble_input.r"))
 source(file.path(fwd_dir, "ensemble_input_list.r"))
 source(file.path(fwd_dir, "ensemble_input_table.r"))
@@ -232,7 +233,8 @@ settings_override <- .assign_tree_node_at_path(list(), "run/inputs/met/path",
                                                get_met_path(1,2))
 
 # Values to pass to write config function
-trait_values <- InputSlot(list(c(root_turnover_rate=0.5, Amax=100)))
+trait_values <- c(root_turnover_rate=0.5, Amax=100)
+# trait_values <- InputSlot(list(c(root_turnover_rate=0.5, Amax=100)))
 param_override <- list(trait.values = trait_values)
 
 # PecanModelInput stores both of these overrides as separate sub-trees
@@ -256,13 +258,10 @@ config_arg_names(model_input)
 config_args(model_input)
 ```
 
-It looks a bit awkward that `trait.values` is wrapped in a list, but this 
-is the required format for the `trait.values` argument in `write.config.SIPNET()`.
-The list returned by `config_args(model_input)` will be passed directly to this
-function, so the values must be formatted as required by the write config.
-Note that when we created the `model_input` tree we also wrapped the 
-`trait.values` list in `InputSlot()`. This is due to the fact that by default
-the tree interprets lists as branches, not leaves. To force an object to 
+Note that if a model input is stored as a list, then it should be wrapped in 
+`InputSlot()`.
+This is due to the fact that by default
+the model input tree interprets lists as branches, not leaves. To force an object to 
 be interpreted as a leaf, we can wrap it in either `InputSlot()` or
 `MetadataSlot()`. The latter will never be used when overwriting default values,
 but may be useful for storing auxiliary information.
@@ -301,7 +300,8 @@ override defaults in `settings` and to pass arguments to the write config functi
 
 ```{r}
 output <- run_model(settings, model_input, run_id="test_run", 
-                    variables="GPP", print_summary=FALSE)
+                    variables="GPP", print_summary=FALSE, 
+                    overwrite_runs_file=TRUE)
 
 print(head(drop(output$GPP)))
 ```
@@ -316,6 +316,18 @@ does under the hood.
 
 # Ensemble Runs
 
+We now demonstrate how to run an ensemble of runs, defined as running a model 
+multiple times with different values for the model inputs. We encode
+the set of runs by instantiating an `EnsembleInputBroadcast` object. This 
+object stores sets of possible values for each input slot, as well as a rule 
+for how those values should be combined to produce each run. One run is defined 
+by a particular combination of values for each input slot. 
+
+We continue using 
+the same `settings` object as before, but adjust the output directory. Ensemble
+runs still use only a single `settings` object; it is different instantiations
+of the `model_input` argument that will vary across runs in the ensemble.
+
 ```{r}
 # These filepaths must be constant across all runs, so should be set in 
 # `settings`, not `model_input` (this will eventually be enforced)
@@ -324,8 +336,8 @@ settings$modeloutdir <- file.path(settings$outdir, "out")
 settings$rundir <- file.path(settings$outdir, "run")
 
 # Ensemble of parameter values (one per row)
-trait_values_ens <- list(list(c(root_turnover_rate=0.5, Amax=100)), 
-                         list(c(root_turnover_rate=0.2, Amax=101)))
+trait_values_ens <- rbind(c(0.5, 100), c(0.2, 101))
+colnames(trait_values_ens) <- c("root_turnover_rate", "Amax")
 
 # Define set of unique values in each input slot
 ic_key <- "settings/run/inputs/poolinitcond/path"
@@ -334,12 +346,15 @@ trait_key <- "config/trait.values"
 
 ic_vals <- list(get_ic_path(1,1), get_ic_path(2,1), get_ic_path(1,2), get_ic_path(2,2))
 met_vals <- list(get_met_path(1,2), get_met_path(2,2))
-trait_vals <- trait_values_ens
 
-slots <- list(ic_vals, met_vals, trait_vals)
+slots <- list(ic_vals, met_vals, trait_values_ens)
 names(slots) <- c(ic_key, met_key, trait_key)
 ```
 
+Having defined the sets of possible values for each of the three slots 
+(IC, met, and trait) above, we now define the rule that describes how they 
+should be combined. This information is all encoded in the `EnsembleInputBroadcast`
+object.
 
 ```{r}
 broadcast_rule <- list(recycle  = c(ic_key, met_key),
@@ -348,6 +363,8 @@ ens_input <- EnsembleInputBroadcast(slots, broadcast_rule)
 
 summary(ens_input)
 ```
+The below code demonstrates how to interrogate the model input for a particular
+run in the ensemble.
 
 ```{r}
 # We can extract run inputs by ID
@@ -364,6 +381,7 @@ config_args(run1)
 # Settings overrides for the first run
 settings_input_slots(run1)
 ```
+Here's a peek into the inputs for another run.
 
 ```{r}
 # The second run
@@ -375,6 +393,8 @@ config_args(run2)
 # Settings overrides for the second run
 settings_input_slots(run2)
 ```
+The core data structure that acts as a template for each run is store in the 
+`mat_rule` field in the ensemble input.
 
 ```{r}
 # Matrix encoding how each model input is constructed 
@@ -383,9 +403,13 @@ mat_rule <- ens_input$mat_rule
 print(mat_rule)
 ```
 
+We now actually run the model ensemble. The `run_model_ensemble()` generic 
+has a similar interface to `run_model()`, but requires an `EnsembleInput`
+instead of a `ModelInput` object.
+
 ```{r}
 ens_output <- run_model_ensemble(settings, ens_input, variables="GPP", 
-                                 print_summary=FALSE)
+                                 print_summary=FALSE, overwrite_runs_file=TRUE)
 
 for(i in seq_along(ens_output)) {
   print(paste0("Run ", i, ":"))
@@ -394,9 +418,77 @@ for(i in seq_along(ens_output)) {
 ```
 
 
+# Model Wrapper 
+
+We now describe how to generate a wrapper function around `run_model_ensemble()`
+that hides all fixed arguments and returns a function that accepts only 
+the "free" arguments.
 
 
 
+```{r}
+# Update output path.
+settings$outdir <- file.path(base_out_dir, "wrapped_ens_run")
+
+# rundir and modeloutdir will be determined dynamically based on value
+# of this variable. We call it `itr` since this might be an iteration value 
+# of some algorithm, for example. See the `dynamic_subdir` below for setting
+# this up properly.
+itr <- 1L
+
+# We define an "output operator". So instead of returning the model output
+# directly, the wrapped model will return the composition of the model output
+# with this operator. Here's a toy example where we just extract the GPP value
+# at the 100th time point of each run.
+output_op <- function(ens_output) {
+  vapply(ens_output, function(out) drop(out$GPP)[100], numeric(1))
+}
+
+# We wrap the model so that only the "trait.values" input is free. The value
+# of `dynamic_subdir` should be a quoted expression that is used to define 
+# the rundir/modeloutdir sub-directories. This allows these directories to change
+# each time the wrapped model is run depending on the value of `itr`.
+wrapped_model <- wrap_pecan_partial_slot_batch(settings, 
+                                               default = ens_input, 
+                                               slot_names = "config/trait.values", 
+                                               output_operator = output_op, 
+                                               verbose = TRUE, 
+                                               dynamic_subdir = quote(paste0("iteration_", itr)))
+```
+
+The above message is printed since `verbose = TRUE`. This tells us that the 
+wrapped model accepts as argument a two-by-two matrix containing the trait 
+values. The shape of this input was inferred directly from `ens_input`.
+Running this model will result in the same exact number of runs as before, 
+but allows the trait values matrix to be passed on the fly.
+
+```{r}
+# Trait values at which to run the model.
+new_trait_values <- rbind(c(0.4, 99), c(0.6, 112))
+colnames(new_trait_values) <- c("root_turnover_rate", "Amax")
+
+# Run model ensemble. The rundir and modeloutdir for this run will be:
+#   run_dir: file.path(settings$outdir, "iteration_1", "run")
+#   out_dir: file.path(settings$outdir, "iteration_1", "out")
+# due to the value of the `itr` variable.
+out1 <- wrapped_model(new_trait_values)
+print(out1)
+```
+
+
+```{r}
+# Now we run the model again. By changing the value of `itr`, the output 
+# paths for this run will change. We also run at new values of the trait values.
+
+# Trait values at which to run the model.
+new_trait_values <- rbind(c(0.55, 98), c(0.62, 106))
+colnames(new_trait_values) <- c("root_turnover_rate", "Amax")
+
+# Run model ensemble again.
+itr <- 2L
+out2 <- wrapped_model(new_trait_values)
+print(out2)
+```
 
 
 

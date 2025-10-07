@@ -47,16 +47,16 @@ summary(ei)
 print(class(ei))
 ```
 Notice that the input slots and metadata are not restricted to coincide for
-all model inputs comprising the ensemble. The printed summary displays the 
-union of all input slots across all inputs. The input-by-input input slot and 
-metadata names can also be queried as follows.
+all model inputs comprising the ensemble [TODO: this is slated to change]. 
+The printed summary displays the union of all input slots across all inputs. 
+The input-by-input input slot and metadata names can also be queried as follows.
 
 ```{r}
-# Input slot names
-slot_names(ei, unique_only=FALSE)
+# Input slot keys (must be unique)
+input_keys(ei)
 
-# Metadata names
-metadata_names(ei, unique_only=FALSE)
+# Input slot names (may not be unique)
+input_names(ei)
 ```
 
 Each model input is associated with a particular "run" of the model, and 
@@ -127,7 +127,11 @@ slot_list <- list(
   d = 9:11 # Equivalent to list(9:11) or matrix(9:11, nrow=1L)
 )
 
-ei <- EnsembleInput(rule_recycle, slot_list)
+# NOTE: currently the `EnsembleInputBroadcast` should always be used when 
+# constructing an ensemble input broadcast object. The code will likely 
+# transition to require the same from `EnsembleInputList` and 
+# `EnsembleInputTable` as well.
+ei <- EnsembleInputBroadcast(slot_list, fn_rule=rule_recycle)
 
 # Class of created object
 print(class(ei))
@@ -136,10 +140,10 @@ print(class(ei))
 summary(ei)
 
 # Underlying data structure (indices of slot values)
-print(ei$idx_mat)
+print(ei$mat_rule)
 
 # Visualizing runs (slot tags)
-get_labeled_idx_mat(ei)
+get_labeled_mat_rule(ei)
 
 # The third run input
 input_slots(get_run_input(ei, "run_3"))
@@ -187,7 +191,7 @@ slot_list <- list(
   `a/f` = list(matrix(5:8, nrow=2L)) # Wrapped in list so treated as single value
 )
 
-ei <- EnsembleInput(rule_recycle, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, fn_rule=rule_recycle)
 
 print(ei)
 
@@ -208,7 +212,7 @@ slot_list <- list(
   `a/f` = list(matrix(5:8, nrow=2L))
 )
 
-try(EnsembleInput(rule_recycle, slot_list))
+try(EnsembleInputBroadcast(slot_list, fn_rule=rule_recycle))
 ```
 
 ## Cartesian Product
@@ -224,7 +228,7 @@ slot_list <- list(
 )
 
 # Ensemble
-ei <- EnsembleInput(rule_cartesian, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, fn_rule=rule_product)
 print(ei)
 
 # Inspecting a single run
@@ -241,7 +245,7 @@ slot_list <- list(
   c = list(7, 8, 9)
 )
 
-ei <- EnsembleInput(rule_match, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, fn_rule=rule_match)
 print(ei)
 ```
 
@@ -259,10 +263,9 @@ slot_list <- list(
   c = matrix(10:11, nrow=2L) # Equivalent to list(10, 11)
 )
 
-rule <- get_composite_rule(groups = list(c(1,2), c(3)),
-                           rules = list(rule_recycle, rule_match))
-
-ei <- EnsembleInput(rule, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, 
+                             list_rule=list(recycle=c("a", "b"),
+                                            identity="c"))
 print(ei)
 ```
 
@@ -292,13 +295,13 @@ slot_list <- list(
   par = matrix(c("p1", "p2"), nrow=2L) # Equivalent to list("p1", "p2")
 )
 
-# Broadcast
-rule <- get_composite_rule(groups = list(c(1,2), 3), # slot groups: (site, ic), (param)
-                           rules = list(rule_recycle, rule_match))
-ei <- EnsembleInput(rule, slot_list)
+
+ei <- EnsembleInputBroadcast(slot_list, 
+                             list_rule=list(recycle=c("met", "ic"),
+                                            identity="par"))
 
 summary(ei)
-get_labeled_idx_mat(ei)
+get_labeled_mat_rule(ei)
 ```
 
 A more intuitive representation of these inputs would be to organize them
@@ -322,11 +325,17 @@ ensemble somewhat manually by applying broadcasting to the sub-trees and then
 concatenating the resulting runs.
 
 ```{r}
+#
+# TODO: this does not yet work
+#
+
+
 broadcast_site <- function(site_name) {
   x <- site_settings[[site_name]]
   x$par <- site_settings$par
   
-  EnsembleInput(rule, x)
+  EnsembleInputBroadcast(x, list_rule=list(recycle=c("met", "ic"),
+                                           identity="par"))
 }
 
 site_names <- c("site1", "site2", "site3")

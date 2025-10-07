@@ -86,7 +86,7 @@ z_list <- list(a=1, b=2, c=c(3,4), d=list(e=5,f=MetadataSlot(6), g=InputSlot(lis
 x <- ModelInput(x)
 y <- ModelInput(y)
 z <- ModelInput(z_list)
-z_prime <- ModelInput(z_list, untagged_is_slot=FALSE)
+z_prime <- ModelInput(z_list, untagged_is_input=FALSE)
 
 
 summary(x)
@@ -134,8 +134,8 @@ this default can be overwritten by passing `return_raw_values=FALSE`.
 # Reminder of tree structure
 summary(z)
 
-flatten_input_slots(z)
-flatten_metadata_slots(z)
+input_slots(z)
+metadata_slots(z)
 ```
 
 The flat representation can be re-constructed by passing separate flattened
@@ -155,8 +155,8 @@ summary(z)
 # with leaf order
 leaf_names(z)
 
-flat_input_slots <- flatten_input_slots(z)
-flat_metadata_slots <- flatten_metadata_slots(z)
+flat_input_slots <- input_slots(z)
+flat_metadata_slots <- metadata_slots(z)
 
 z_new <- unflatten_model_input(flat_input_slots, flat_metadata_slots)
 

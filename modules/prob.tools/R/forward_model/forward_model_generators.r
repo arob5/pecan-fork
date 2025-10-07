@@ -42,7 +42,7 @@
 #' return value of \code{run_model_ensemble()}. The user must ensure that this
 #' function is defined correctly with respect to the return value.
 #' 
-#' @param obj An R object representing the model.
+#' @param model_obj An R object representing the model.
 #' @param default An \code{EnsembleInputBroadcast} object acting as a template for
 #'  the ensemble run. The exact structure and number of runs can be inferred
 #'  from this template. The model wrapper will simply update the values of the 
@@ -72,12 +72,12 @@
 #'  
 #' @author Andrew Roberts
 #' @export
-wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NULL, 
+wrap_partial_slot_batch <- function(model_obj, default, slot_names, output_operator=NULL, 
                                     verbose=TRUE, .fixed_args=list(),
                                     .dynamic_args=list(), .arg_update_fn=NULL) {
 
   # Freeze arguments (except for dynamic arguments)
-  force(obj); force(default); force(slot_names); force(output_operator); force(.arg_update_fn)
+  force(model_obj); force(default); force(slot_names); force(output_operator); force(.arg_update_fn)
   for(nm in names(.fixed_args)) force(.fixed_args[[nm]])
   
   # Determine dimension of matrix that must be input into the model wrapper.
@@ -86,12 +86,12 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
   ncol_per_slot <- vapply(slot_dims, function(x) x[2], integer(1))
   input_dim <- c(slot_dims[[1]][1], sum(ncol_per_slot))
   
-  if(verbose) .print_partial_slot_batch_info(obj, default, slot_names, input_dim, 
+  if(verbose) .print_partial_slot_batch_info(model_obj, default, slot_names, input_dim, 
                                              output_operator, .fixed_args, 
                                              .dynamic_args, .arg_update_fn)
   
   function(input_mat, ...) {
-    
+
     # Evaluate dynamic arguments from calling scope.
     dyn_vals <- lapply(.dynamic_args, function(expr) eval(expr, envir=parent.frame()))
     names(dyn_vals) <- names(.dynamic_args)    
@@ -101,7 +101,7 @@ wrap_partial_slot_batch <- function(obj, default, slot_names, output_operator=NU
     
     # Combine all arguments in order of priority (later overrides earlier)
     extra_args <- merge_named_lists(.fixed_args, dyn_vals, list(...))
-    all_args <- c(list(model_obj=obj, ens_input=ens_input), extra_args)
+    all_args <- c(list(model_obj=model_obj, ens_input=ens_input), extra_args)
     
     # Optionally update arguments (potentially based on values of dynamics args).
     if(!is.null(.arg_update_fn)) {

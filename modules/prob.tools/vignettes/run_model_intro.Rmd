@@ -65,7 +65,7 @@ input_slots(model_input)
 The metadata is similarly accessed via `metadata()`.
 
 ```{r}
-metadata(model_input)
+metadata_slots(model_input)
 ```
 
 
@@ -192,12 +192,12 @@ slot_list <- list(
 )
 
 # Broadcast
-rule <- get_composite_rule(groups = list(c(1,2), 3), # slot groups: (site, ic), (param)
-                           rules = list(rule_recycle, rule_match))
-ei <- EnsembleInput(rule, slot_list)
+ei <- EnsembleInputBroadcast(slot_list, 
+                             list_rule=list(recycle = c("met", "ic"),
+                                            identity = "par"))
 
 summary(ei)
-get_labeled_idx_mat(ei)
+get_labeled_mat_rule(ei)
 ```
 
 
@@ -205,7 +205,7 @@ The main object stored by an `EnsembleInputBroadcast` is an index matrix
 that assigns slot values to particular runs.
 
 ```{r}
-ei$idx_mat
+ei$mat_rule
 ```
 
 Attaching string labels makes this easier to understand. The print method

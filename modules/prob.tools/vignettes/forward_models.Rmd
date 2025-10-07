@@ -276,11 +276,73 @@ try(cat(fwd_concat(new_vals)))
 dyn_var <- "dynvar"
 cat(fwd_concat(new_vals))
 
-# Run ensemble model again with new model inputs. Dynamic variable will be updated.
+# Run ensemble model again with new model inputs and dynamic variable. 
+# Dynamic variable will be updated.
 dyn_var <- "dynvarnew"
 cat(fwd_concat(free_slots_mat))
 ```
 
+## Argument Update Function 
+
+In certain cases, it may be useful to adjust model run settings dynamically 
+based on the current context. Dynamic arguments provide some flexibility 
+by allowing arguments to `run_model_ensemble` to be dynamically set based 
+on variables in the calling scope of the model wrapper. However, consider the 
+more complicated situation where the model object `f` itself should be modified
+based on the value of a dynamic variable. As an example, consider the situation
+where a more complicated model object stores information on where to write output
+files. These paths may not be explicitly considered "model inputs", though
+we may want them to change based on the context of when the model is called.
+In this case, we may want to modify the model object to update file paths based
+on a variable in the calling scope of the model wrapper
+(e.g., the current iteration of some algorithm).
+
+We consider a toy example here to illustrate the functionality. The model 
+object `f` is modified based both on the value of the dynamic variable `dyn_var` 
+from the previous example.
+
+```{r}
+
+# Define function to modify `f` dynamically.
+modify_f <- function(args) {
+  
+  # Extract the current model object and current dynamic variable values.
+  f <- args$model_obj
+  dyn_val <- args$dyn_arg
+  
+  # Modify the model object.
+  f_new <- function(x, aux_arg, dyn_arg) {
+    out <- f(x, aux_arg, dyn_arg)
+    return(paste(dyn_val, out, sep="   :   "))
+  }
+  
+  # Return updated arguments.
+  args$model_obj <- f_new
+  return(args)
+}
+
+
+# Treat the new auxiliary variable as dynamic.
+fwd_concat <- wrap_partial_slot_batch(f, ei, slot_names=c("a", "b", "c"),
+                                      output_operator=output_op, 
+                                      .fixed_args=list(aux_arg="auxarg"),
+                                      .dynamic_args=list(dyn_arg=quote(dyn_var)), 
+                                      .arg_update_fn=modify_f)
+
+# Specify value of the dynamic variable and run model ensemble.
+dyn_var <- "dynvar"
+cat(fwd_concat(new_vals))
+
+# Run ensemble model again with new model inputs and dynamic variable.
+dyn_var <- "dynvarnew"
+cat(fwd_concat(free_slots_mat))
+```
+
+Note that `.arg_update_fn` is quite general; any of the arguments to 
+`run_model_ensemble()` can be modified based on any of the other arguments.
+One must be careful to define this function is such a way that doesn't break 
+any of the functionality required to properly run the model. Most users will 
+likely not need to touch this argument in typical use cases.
 
 
 

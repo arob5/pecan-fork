@@ -42,7 +42,7 @@
 #' and information from the "model" block. See \code{\link{PecanModelInput}}
 #' for more details.
 #'
-#' @param settings A PEcAn \code{Settings} object.
+#' @param model_obj A PEcAn \code{Settings} object.
 #' @param model_input A PEcAn \code{ModelInput} object.
 #' @param run_id character(1), a unique string identifier for the run. Will be 
 #'  auto-generated if not provided.
@@ -52,7 +52,8 @@
 #'  \code{PEcAn.workflow::start_model_runs()} will run both the newly appended
 #'  and old runs. Even in this case, this method will still only return the 
 #'  results associated with \code{run_id}, the current run. 
-#' @param ... Additional arguments passed to \code{PEcAn.utils::read.output()}.
+#' @param read_output_args Additional named arguments passed to \code{PEcAn.utils::read.output()}.
+#' @param ... Not used.
 #'
 #' @returns The model outputs corresponding to the model run with ID \code{run_id}.
 #'  The outputs are formatted as returned by \code{PEcAn.utils::read.output()}.
@@ -60,18 +61,20 @@
 #'  
 #' @author Andrew Roberts
 #' @export
-run_model.Settings <- function(settings, model_input, run_id=NULL, 
-                               overwrite_runs_file=FALSE, ...) {
+run_model.Settings <- function(model_obj, model_input, run_id=NULL, 
+                               overwrite_runs_file=FALSE, read_output_args=list(), ...) {
   
   # Write configs, start model run, write outputs to file.
-  run_id <- start_pecan_model_run(settings=settings,
+  run_id <- start_pecan_model_run(settings=model_obj,
                                   model_input=model_input,
                                   run_id=run_id,
                                   overwrite_runs_file=overwrite_runs_file)
   
   # Read outputs from file.
-  run_output_path <- file.path(settings$modeloutdir, run_id)
-  model_output <- PEcAn.utils::read.output(run_id, outdir=run_output_path, ...)
+  run_output_path <- file.path(model_obj$modeloutdir, run_id)
+  read_output_args <- merge_named_lists(read_output_args, 
+                                        list(runid=run_id, outdir=run_output_path))
+  model_output <- do.call(PEcAn.utils::read.output, read_output_args)
   attr(model_output, "run_id") <- run_id
   
   return(model_output)
@@ -137,6 +140,17 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
   model_write_config <- paste0("write.config.", model_type)
   config_args <- list(settings=settings, defaults=settings$pfts, run.id=run_id)
   config_args <- c(config_args, config_args(model_input))
+  
+  # TODO: temporary - adding so that "traits.values" can be passed as a vector.
+  # This should probably be changed at the write config level rather than here.
+  if("trait.values" %in% names(config_args)) {
+    trait_values <-  config_args[["trait.values"]]
+  
+    if(is.atomic(trait_values)) {
+      config_args[["trait.values"]] <- list(pft = trait_values)
+    }
+  }
+  
   do.call(model_write_config, args=config_args)
   
   # Either append to or overwrite existing "runs.txt" file.
@@ -164,11 +178,12 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
 #' model runs. The output from the runs is then read into a list (one element
 #' per run) by calling \code{PEcAn.utils::read.output()} for each run.
 #' 
-#' @param settings A PEcAn \code{settings} file.
+#' @param model_obj A PEcAn \code{settings} file.
 #' @param ens_input A PEcAn \code{EnsembleInput} object.
 #' @param overwrite_runs_file logical(1), if \code{TRUE} then any existing 
 #'  \code{runs.txt} file is overwritten. Otherwise it is appended to.
-#' @param ... Additional arguments passed to \code{PEcAn.utils::read.output()}.
+#' @param read_output_args Additional named arguments passed to \code{PEcAn.utils::read.output()}.
+#' @param ... Not used.
 #' 
 #' @returns list of length equal to the number of runs in the ensemble, with
 #'  each element storing the output for the respective run. The list names are
@@ -176,16 +191,18 @@ prep_pecan_model_run <- function(settings, model_input, run_id=NULL,
 #'  
 #' @author Andrew Roberts
 #' @export
-run_model_ensemble.Settings <- function(settings, ens_input,
-                                        overwrite_runs_file=FALSE, ...) {
+run_model_ensemble.Settings <- function(model_obj, ens_input,
+                                        overwrite_runs_file=FALSE,
+                                        read_output_args=list(), ...) {
 
-  run_ids <- start_pecan_model_ensemble_run(settings, ens_input,
+  run_ids <- start_pecan_model_ensemble_run(model_obj, ens_input,
                                             overwrite_runs_file=overwrite_runs_file)
   
   read_single_run_output <- function(run_id) {
-    PEcAn.utils::read.output(run_id,
-                             outdir = file.path(settings$modeloutdir, run_id),
-                             ...)
+    args <- merge_named_lists(read_output_args, 
+                              list(runid=run_id, 
+                                   outdir=file.path(model_obj$modeloutdir, run_id)))
+    do.call(PEcAn.utils::read.output, args)
   }
   
   # Read list of model output from each run
@@ -256,7 +273,7 @@ get_run_modeloutdir <- function(settings, ens_input, run_id) {
 # Model Wrappers
 # ------------------------------------------------------------------------------
 
-#' TODO
+#' Generate a PEcAn specific wrapper around \code{run_model_ensemble()} for batch inputs
 #'
 #' A PEcAn-specific wrapper around \code{wrap_partial_slot_batch()} that provides
 #' additional special functionality for PEcAn runs. Note that 
@@ -264,9 +281,26 @@ get_run_modeloutdir <- function(settings, ens_input, run_id) {
 #' this function is typically recommended for common PEcAn use cases.
 #' 
 #' @details
-#' 
-#' 
+#' See \code{\link{wrap_partial_slot_batch}} for information on how the model 
+#' is wrapped. Only the additional PEcAn-specific functionality is discussed here.
+#' This PEcAn helper is set up to provide dynamic creation of output paths
+#' (rundir and modeloutdir). The base path \code{settings$outdir} will be
+#' fixed. The argument \code{dynamic_subdir} should be a quoted expression
+#' that may depend on variables in the calling scope of the wrapped model.
+#' When the wrapped model is run, the quoted expression is evaluated like
+#' Let \code{val <- eval(dynamic_subdir, envir=parent.frame())}. The rundir
+#' and modeloutdir paths are then set to 
+#' \code{file.path(settings$outdir, val, "run")} and 
+#' \code{file.path(settings$outdir, val, "out")}, respectively.
+#' This allows the paths to change based on the context in the calling 
+#' environment of the wrapped model (e.g., an iteration value of an algorithm).
 #'
+#' @param dynamic_subdir A quoted expression or NULL. If NULL, no dynamic
+#'  path creation is done. Otherwise, \code{dynamic_subdir} is used for 
+#'  dynamic path creation as described in details.
+#'  
+#' @author Andrew Roberts  
+#' @export
 wrap_pecan_partial_slot_batch <- function(settings, default, slot_names, 
                                           output_operator=NULL, 
                                           verbose=TRUE, dynamic_subdir=NULL) {
@@ -288,7 +322,7 @@ wrap_pecan_partial_slot_batch <- function(settings, default, slot_names,
     }
   }
   
-  wrap_partial_slot_batch(obj = settings,
+  wrap_partial_slot_batch(model_obj = settings,
                           default = default,
                           slot_names = slot_names,
                           output_operator = output_operator,

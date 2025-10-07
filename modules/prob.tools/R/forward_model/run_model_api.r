@@ -25,6 +25,9 @@
 #' 
 #' @returns An R object that represents the model output.
 #' @seealso \code{\link{run_model.function}},  \code{\link{ModelInput}}
+#' 
+#' @note All \code{run_model()} methods should match the first two argument
+#'  names exactly.
 #'
 #' @author Andrew Roberts
 #' @export
@@ -45,6 +48,9 @@ run_model <- function(model_obj, model_input, ...) {
 #' 
 #' @returns An R object that represents the collection of model outputs.
 #' @seealso \code{\link{run_model_ensemble.default}}, \code{\link{EnsembleInput}}
+#' 
+#' @note All \code{run_model_ensemble()} methods should match the first two 
+#'  argument names exactly.
 #'
 #' @author Andrew Roberts
 #' @export

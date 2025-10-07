@@ -101,6 +101,16 @@ input_keys.EnsembleInput <- function(x, unique_only=TRUE, ...) {
 }
 
 
+#' Analogous to \code{input_keys.EnsembleInput}, but for metadata leaves.
+#' @export
+metadata_keys.EnsembleInput <- function(x, unique_only=TRUE, ...) {
+  metadata_keys_per_run <- lapply(as_ensemble_input_list(x)$inputs, metadata_keys)
+  
+  if(unique_only) unique(unlist(metadata_keys_per_run, use.names=FALSE)) 
+  else metadata_keys_per_run
+}
+
+
 #' Run IDs Generic
 #'
 #' Returns a character vector of length equal to the number of runs, where each
@@ -170,26 +180,6 @@ n_inputs.EnsembleInput <- function(x, ...) {
 n_runs <- function(x) {
   check_ensemble_input_type(x)
   length(run_ids(x))
-}
-
-
-#' Dimension of ensemble model input
-#'
-#' Returns a tuple containing the the number of runs and number of slots
-#' contained within an \code{EnsembleInput}. This corresponds to the row and
-#' column dimensions when the ensemble input is stored in a tabular format.
-#' However, note that \code{EnsembleInputTable} will always have more columns
-#' than \code{n_inputs(x)} due to the presence of the \code{run_id} column and
-#' possibly additional metadata columns.
-#'
-#' @param x An \code{EnsembleInput} object.
-#' @param ... Not used
-#' @return Named integer vector of length 2: c(n_runs = n_runs(x), n_inputs = n_inputs(x)).
-#'
-#' @author Andrew Roberts
-#' @export
-dim.EnsembleInput <- function(x, ...) {
-  c(n_runs=n_runs(x), n_inputs=n_inputs(x))
 }
 
 
