@@ -218,7 +218,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     SLA_g <- PEcAn.utils::ud_convert(SLA, "1/kg", "1/g") 
     if ("Amax" %in% pft.trait.names) {
       Amax_area <- pft.traits[which(pft.trait.names == "Amax")] # [µmol/m2/s]
-      param[id, 2] <- PEcAn.utils::ud_convert(Amax_area * SLA_g, "umol/m2/s", "nmol/g/s")
+      param[id, 2] <- PEcAn.utils::ud_convert(Amax_area * SLA_g, "umol", "nmol") # [nmol/g/s]
     } else {
       amax_mass <- param[id, 2] # [nmol/g/s]
       Amax <- PEcAn.utils::ud_convert(amax_mass / SLA_g, "nmol/g/s", "umol/m2/s")
