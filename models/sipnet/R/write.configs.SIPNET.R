@@ -238,7 +238,7 @@ write.config.SIPNET <- function(defaults, trait.values, settings, run.id, inputs
     if ("leaf_respiration_rate_m2" %in% pft.trait.names) {
       Rd <- pft.traits[which(pft.trait.names == "leaf_respiration_rate_m2")]
       id <- which(param[, 1] == "baseFolRespFrac")
-      param[id, 2] <- max(min(Rd/Amax, 1), 0)
+      param[id, 2] <- max(min(Rd / Amax_area, 1), 0)
     }
     
     # Low temp threshold for photosynethsis
