@@ -219,6 +219,7 @@ settings_keys <- function(x) {
 #' object will be ignored. 
 #'
 #' @param settings named list, PEcAn \code{Settings} object, or \code{ModelInput} object.
+#'                 Does not support PEcAn \code{MultiSettings} objects.
 #' @param model_input A PEcAn \code{ModelInput}.
 #'
 #' @returns A PEcAn \code{Settings} object containing the updated settings.
@@ -226,6 +227,7 @@ settings_keys <- function(x) {
 #' @author Andrew Roberts
 #' @export
 update_pecan_settings <- function(settings, model_input) {
+  .check_is_pecan_settings_like(settings)
   
   settings_override <- settings_tree(model_input)
   if(is_model_input(settings)) settings <- settings$.data
@@ -282,4 +284,38 @@ resolve_pecan_settings_value <- function(settings, model_input, settings_key) {
   if(is_tagged_leaf(val)) return(val$value)
   else return(val)
 }
+
+
+#' Check that an object can be interpreted as a PEcAn \code{Settings} object
+#'
+#' This function is not a substitute for validating the validity of a PEcAn
+#' settings object. Rather, it simply checks if the input is a pure R list,
+#' \code{ModelInput} object, or a \code{Settings} object. A PEcAn 
+#' \code{MultiSettings} object is NOT considered settings-like.
+#' This function is primarily intended for use by \code{update_pecan_settings}.
+.check_is_pecan_settings_like <- function(settings) {
+  
+  msg <- "`settings` is not PEcAn settings-like. PEcAn run model API requires 
+          `settings` to be a PEcAn `Settings` object, a pure R list, or a 
+          `ModelInput` object."
+  
+  if(PEcAn.settings::is.MultiSettings(settings)) {
+    msg <- paste(msg, "PEcAn MultiSettings object not supported.")
+    PEcAn.logger::logger.severe(msg)
+  }
+  
+  is_settings_like <- is_pure_list(settings) || 
+                      PEcAn.settings::is.Settings(settings) || 
+                      is_model_input(settings)
+  
+  if(!is_settings_like) {
+    PEcAn.logger::logger.severe(msg)
+  }
+  
+  invisible(TRUE)
+}
+
+
+
+
 

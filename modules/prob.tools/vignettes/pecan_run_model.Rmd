@@ -300,7 +300,7 @@ override defaults in `settings` and to pass arguments to the write config functi
 
 ```{r}
 output <- run_model(settings, model_input, run_id="test_run", 
-                    variables="GPP", print_summary=FALSE, 
+                    read_output_args = list(variables="GPP"),
                     overwrite_runs_file=TRUE)
 
 print(head(drop(output$GPP)))
@@ -339,25 +339,34 @@ settings$rundir <- file.path(settings$outdir, "run")
 trait_values_ens <- rbind(c(0.5, 100), c(0.2, 101))
 colnames(trait_values_ens) <- c("root_turnover_rate", "Amax")
 
-# Define set of unique values in each input slot
+# These key paths must point to the proper node in the PEcAn settings tree.
+# The sub-trees or leaves at these nodes will be overwritten to construct each
+# run in the ensemble.
+site_key <- "settings/run/site"
 ic_key <- "settings/run/inputs/poolinitcond/path"
 met_key <- "settings/run/inputs/met/path"
+
+# These key paths point to nodes in the model input tree that will be forwarded
+# to the arguments of the write config function.
 trait_key <- "config/trait.values"
 
+# Define set of unique values in each input slot. Recall the argument pattern 
+# used by the helper functions here is (site_id, ens_id)
+site_vals <- list(get_site_info(1), get_site_info(2))
 ic_vals <- list(get_ic_path(1,1), get_ic_path(2,1), get_ic_path(1,2), get_ic_path(2,2))
 met_vals <- list(get_met_path(1,2), get_met_path(2,2))
 
-slots <- list(ic_vals, met_vals, trait_values_ens)
-names(slots) <- c(ic_key, met_key, trait_key)
+slots <- list(site_vals, ic_vals, met_vals, trait_values_ens)
+names(slots) <- c(site_key, ic_key, met_key, trait_key)
 ```
 
-Having defined the sets of possible values for each of the three slots 
-(IC, met, and trait) above, we now define the rule that describes how they 
+Having defined the sets of possible values for each of the slots 
+(site, IC, met, and trait) above, we now define the rule that describes how they 
 should be combined. This information is all encoded in the `EnsembleInputBroadcast`
 object.
 
 ```{r}
-broadcast_rule <- list(recycle  = c(ic_key, met_key),
+broadcast_rule <- list(recycle  = c(site_key, ic_key, met_key),
                        identity = trait_key)
 ens_input <- EnsembleInputBroadcast(slots, broadcast_rule)
 
@@ -393,8 +402,11 @@ config_args(run2)
 # Settings overrides for the second run
 settings_input_slots(run2)
 ```
+
 The core data structure that acts as a template for each run is store in the 
-`mat_rule` field in the ensemble input.
+`mat_rule` field in the ensemble input. Currently, there is no convenient way
+to define custom run IDs for each run in the ensemble. If one wished, they 
+could update the row names of the `mat_rule` table to define custom run IDs.
 
 ```{r}
 # Matrix encoding how each model input is constructed 
@@ -408,8 +420,9 @@ has a similar interface to `run_model()`, but requires an `EnsembleInput`
 instead of a `ModelInput` object.
 
 ```{r}
-ens_output <- run_model_ensemble(settings, ens_input, variables="GPP", 
-                                 print_summary=FALSE, overwrite_runs_file=TRUE)
+ens_output <- run_model_ensemble(settings, ens_input, 
+                                 read_output_args=list(variables="GPP", print_summary=FALSE),
+                                 overwrite_runs_file=TRUE)
 
 for(i in seq_along(ens_output)) {
   print(paste0("Run ", i, ":"))
@@ -422,9 +435,7 @@ for(i in seq_along(ens_output)) {
 
 We now describe how to generate a wrapper function around `run_model_ensemble()`
 that hides all fixed arguments and returns a function that accepts only 
-the "free" arguments.
-
-
+the "free" arguments. In other words, it "freezes" certain arguments.
 
 ```{r}
 # Update output path.
@@ -452,8 +463,10 @@ wrapped_model <- wrap_pecan_partial_slot_batch(settings,
                                                default = ens_input, 
                                                slot_names = "config/trait.values", 
                                                output_operator = output_op, 
-                                               verbose = TRUE, 
-                                               dynamic_subdir = quote(paste0("iteration_", itr)))
+                                               verbose = TRUE,
+                                               dynamic_subdir = quote(paste0("iteration_", itr)),
+                                               read_output_args = list(variables="GPP",
+                                                                       print_summary=FALSE))
 ```
 
 The above message is printed since `verbose = TRUE`. This tells us that the 

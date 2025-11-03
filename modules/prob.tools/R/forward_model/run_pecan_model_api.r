@@ -303,7 +303,8 @@ get_run_modeloutdir <- function(settings, ens_input, run_id) {
 #' @export
 wrap_pecan_partial_slot_batch <- function(settings, default, slot_names, 
                                           output_operator=NULL, 
-                                          verbose=TRUE, dynamic_subdir=NULL) {
+                                          verbose=TRUE, dynamic_subdir=NULL,
+                                          read_output_args=list()) {
 
   if(is.null(dynamic_subdir)) {
     .arg_update_fn <- NULL
@@ -327,7 +328,8 @@ wrap_pecan_partial_slot_batch <- function(settings, default, slot_names,
                           slot_names = slot_names,
                           output_operator = output_operator,
                           verbose = verbose,
-                          .fixed_args = list(overwrite_runs_file=TRUE),
+                          .fixed_args = list(overwrite_runs_file=TRUE,
+                                             read_output_args=read_output_args),
                           .dynamic_args = .dynamic_args,
                           .arg_update_fn = .arg_update_fn)
 }
